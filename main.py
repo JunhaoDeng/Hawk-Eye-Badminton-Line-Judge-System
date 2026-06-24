@@ -26,6 +26,8 @@ def main():
     parser.add_argument('--visualize-positions', choices=['true', 'false'], default='true', help='是否生成球员位置热力图和散点图，默认 true')
     parser.add_argument('--audio', choices=['true', 'false'], default='true', help='是否保留原视频音频，默认 true')
     parser.add_argument('--language', default='zh', choices=['zh', 'en'], help='选择界面语言 (zh/en)')
+    parser.add_argument('--mode', default='singles', choices=['singles', 'doubles'], help='比赛模式：singles（单打）或 doubles（双打），默认 singles')
+    parser.add_argument('--device', default='cpu', choices=['cpu', 'mps'], help='推理设备：cpu 或 mps（Apple Silicon GPU），默认 cpu')
     args = parser.parse_args()
 
     load_runtime_dependencies()
@@ -52,7 +54,9 @@ def main():
         pose_mode=args.pose_mode,
         pose_family=args.pose_family,
         yolo_pose_model=args.yolo_pose_model,
-        show_pose_roi=args.pose_roi == 'true'
+        show_pose_roi=args.pose_roi == 'true',
+        mode=args.mode,
+        device=args.device,
     )
 
     system.keep_audio = args.audio == 'true'

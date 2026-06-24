@@ -85,7 +85,15 @@ def process_video_with_audio(video_path, temp_video_path, output_path, save_dir)
                 "-i",
                 video_path,
                 "-c:v",
-                "copy",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "23",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
                 "-c:a",
                 "aac",
                 "-map",
@@ -95,13 +103,13 @@ def process_video_with_audio(video_path, temp_video_path, output_path, save_dir)
                 "-shortest",
                 output_path,
             ],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
             timeout=120,
         )
 
         if result.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            raise RuntimeError("ffmpeg failed to merge audio")
+            raise RuntimeError(f"ffmpeg failed to merge audio (code={result.returncode}): {result.stderr[:300]}")
 
         print(f"Video with audio saved to: {output_path}")
         cleanup_temp_files([temp_video_path, fixed_temp_path])
@@ -119,7 +127,37 @@ def process_video_without_audio(temp_video_path, output_path):
         if not os.path.exists(temp_video_path):
             raise FileNotFoundError(f"Temporary video not found: {temp_video_path}")
 
-        shutil.copy2(temp_video_path, output_path)
+        # Re-encode to H.264 for browser compatibility
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                temp_video_path,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "23",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                "-an",
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            # Fallback: just copy the temp video as-is
+            print(f"H.264 encoding failed (code={result.returncode}), falling back to raw copy")
+            if result.stderr:
+                print(f"ffmpeg stderr: {result.stderr[:500]}")
+            shutil.copy2(temp_video_path, output_path)
 
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
             raise RuntimeError("Output video was not created")
@@ -134,8 +172,12 @@ def process_video_without_audio(temp_video_path, output_path):
 
 def setup_video_writer(frame_width, frame_height, fps, temp_output_path):
     os.makedirs(os.path.dirname(temp_output_path), exist_ok=True)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    # Try H.264 first (avc1), fall back to mp4v for compatibility
+    fourcc = cv2.VideoWriter_fourcc(*"avc1")
     writer = cv2.VideoWriter(temp_output_path, fourcc, fps, (frame_width, frame_height))
+    if not writer.isOpened():
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(temp_output_path, fourcc, fps, (frame_width, frame_height))
     if not writer.isOpened():
         raise RuntimeError(f"Unable to create video writer: {temp_output_path}")
     return writer

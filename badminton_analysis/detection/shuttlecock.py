@@ -1,4 +1,4 @@
-﻿from collections import deque
+from collections import deque
 import time
 
 import cv2
@@ -25,17 +25,29 @@ class ShuttlecockTracker:
         roi_padding_ratio=0.08,
         max_box_area_ratio=0.004,
         max_aspect_ratio=4.0,
+        mode='singles',
+        device='cpu',
     ):
         self.yolo_ball_model = yolo_ball_model
         self.trajectory_length = trajectory_length
         self.show_trajectory = show_trajectory
         self.show_performance_stats = show_performance_stats
-        self.max_jump_pixels = max_jump_pixels
-        self.prediction_gate_pixels = prediction_gate_pixels
+        self.mode = mode
         self.max_missing_frames = max_missing_frames
         self.roi_padding_ratio = roi_padding_ratio
-        self.max_box_area_ratio = max_box_area_ratio
-        self.max_aspect_ratio = max_aspect_ratio
+
+        # Adaptive parameters based on mode
+        if mode == 'doubles':
+            # Doubles: shuttlecock moves faster, appears smaller, more occlusions
+            self.max_jump_pixels = 280          # Larger jump tolerance (was 220)
+            self.prediction_gate_pixels = 320   # Wider prediction gate (was 260)
+            self.max_box_area_ratio = 0.003     # Stricter large-object filter (was 0.004)
+            self.max_aspect_ratio = 3.5         # Stricter aspect filter (was 4.0)
+        else:
+            self.max_jump_pixels = max_jump_pixels
+            self.prediction_gate_pixels = prediction_gate_pixels
+            self.max_box_area_ratio = max_box_area_ratio
+            self.max_aspect_ratio = max_aspect_ratio
 
         self.shuttlecock_trajectory = deque(maxlen=trajectory_length)
         self.last_valid_position = None
@@ -43,8 +55,20 @@ class ShuttlecockTracker:
         self.last_detection = self._empty_detection_state()
         self.missing_frames = 0
 
-        if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+        # Multi-frame stability: require consecutive detections for cold start
+        self.consecutive_detections = 0
+        self.min_consecutive_to_accept = 3
+
+        # 设备选择：手动指定 > 自动检测 (CUDA > MPS > CPU)
+        if device == 'mps':
+            self.ultra_device = 'mps'
+        elif device not in ('cpu', 'auto'):
+            self.ultra_device = device
+        elif torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
             self.ultra_device = 0
+        elif (torch is not None and hasattr(torch.backends, 'mps')
+              and torch.backends.mps.is_available()):
+            self.ultra_device = 'mps'
         else:
             self.ultra_device = "cpu"
 
@@ -128,17 +152,33 @@ class ShuttlecockTracker:
 
     def _select_candidate(self, candidates):
         if not candidates:
+            self.consecutive_detections = 0
             return None
 
         if not self.shuttlecock_trajectory:
-            return max(candidates, key=lambda item: item["confidence"])
+            # Cold start: require consecutive high-confidence detections
+            best = max(candidates, key=lambda item: item["confidence"])
+            if best["confidence"] > 0.35:
+                self.consecutive_detections += 1
+                if self.consecutive_detections >= self.min_consecutive_to_accept:
+                    return best
+                return None  # Not enough consecutive frames yet
+            else:
+                self.consecutive_detections = 0
+                return None
 
+        self.consecutive_detections += 1
         predicted = self._predict_next_position()
 
         def score(candidate):
             distance = self._distance(candidate["point"], predicted)
             size_penalty = candidate["area_ratio"] * 4000
-            return candidate["confidence"] * 1000 - distance * 1.4 - size_penalty
+            if self.mode == 'doubles':
+                # Doubles: higher confidence weight (more occlusions),
+                # lower distance weight (faster movement)
+                return candidate["confidence"] * 1200 - distance * 1.0 - size_penalty * 1.5
+            else:
+                return candidate["confidence"] * 1000 - distance * 1.4 - size_penalty
 
         return max(candidates, key=score)
 
@@ -158,23 +198,50 @@ class ShuttlecockTracker:
         last_point = self.shuttlecock_trajectory[-1]
         jump_distance = self._distance(point, last_point)
         strict_gate = self.missing_frames <= self.max_missing_frames
-        if jump_distance > self.max_jump_pixels and strict_gate:
+
+        # Dynamic jump threshold: relax when shuttlecock has been missing
+        dynamic_jump = self.max_jump_pixels * (1 + self.missing_frames * 0.5)
+        if jump_distance > dynamic_jump and strict_gate:
             return True
 
         predicted = self._predict_next_position()
         predicted_distance = self._distance(point, predicted)
-        if predicted_distance > self.prediction_gate_pixels and strict_gate:
+        # Dynamic prediction gate: relax when shuttlecock has been missing
+        dynamic_gate = self.prediction_gate_pixels * (1 + self.missing_frames * 0.3)
+        if predicted_distance > dynamic_gate and strict_gate:
             return True
 
         return False
 
     def _predict_next_position(self):
+        """Predict next shuttlecock position using second-order (acceleration) model.
+
+        With 3+ trajectory points, computes velocity and acceleration for
+        more accurate prediction during rapid direction changes.
+        Falls back to linear prediction with fewer points.
+        """
         if len(self.shuttlecock_trajectory) < 2:
             return self.shuttlecock_trajectory[-1]
 
-        prev_x, prev_y = self.shuttlecock_trajectory[-2]
-        last_x, last_y = self.shuttlecock_trajectory[-1]
-        return (last_x + (last_x - prev_x), last_y + (last_y - prev_y))
+        if len(self.shuttlecock_trajectory) < 3:
+            # Linear prediction: last + (last - prev)
+            prev_x, prev_y = self.shuttlecock_trajectory[-2]
+            last_x, last_y = self.shuttlecock_trajectory[-1]
+            return (last_x + (last_x - prev_x), last_y + (last_y - prev_y))
+
+        # Second-order: position + velocity + damped acceleration
+        p0 = self.shuttlecock_trajectory[-3]
+        p1 = self.shuttlecock_trajectory[-2]
+        p2 = self.shuttlecock_trajectory[-1]
+
+        v1 = (p1[0] - p0[0], p1[1] - p0[1])
+        v2 = (p2[0] - p1[0], p2[1] - p1[1])
+        a = (v2[0] - v1[0], v2[1] - v1[1])
+
+        # Damping factor 0.5 prevents overshooting on rapid deceleration
+        pred_x = p2[0] + v2[0] + a[0] * 0.5
+        pred_y = p2[1] + v2[1] + a[1] * 0.5
+        return (pred_x, pred_y)
 
     def _append_valid_point(self, point):
         self.shuttlecock_trajectory.append(point)
@@ -230,6 +297,7 @@ class ShuttlecockTracker:
         self.last_candidate = None
         self.last_detection = self._empty_detection_state()
         self.missing_frames = 0
+        self.consecutive_detections = 0
 
     def get_trajectory(self):
         return list(self.shuttlecock_trajectory)

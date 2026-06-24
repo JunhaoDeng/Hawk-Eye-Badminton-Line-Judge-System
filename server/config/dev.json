@@ -1,0 +1,19 @@
+{
+  "port": 9000,
+  "host": "http://0.0.0.0",
+  "mongodb": {
+    "host": "mongodb://127.0.0.1:27017/badminton_analysis",
+    "extra": {
+      "server": {
+        "auto_connect": true,
+        "poolSize": 10,
+        "socketOptions": {
+          "timeOut": 1000,
+          "keepAlive": 1
+        }
+      }
+    }
+  },
+  "pythonPath": ".venv/bin/python",
+  "projectRoot": ".."
+}

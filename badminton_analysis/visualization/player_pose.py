@@ -9,6 +9,16 @@ from ..detection.rtmpose import RTMPoseProcessor
 class PlayerPoseVisualizer:
     """Detect, filter, and draw player pose keypoints."""
 
+    # Colours for each region key (singles and doubles)
+    REGION_COLORS = {
+        "upper":   (0, 255, 255),
+        "lower":   (255, 0, 255),
+        "upper_1": (0, 255, 255),
+        "upper_2": (0, 255, 128),
+        "lower_1": (255, 0, 255),
+        "lower_2": (0, 128, 255),
+    }
+
     def __init__(
         self,
         rtmpose_processor=None,
@@ -131,11 +141,11 @@ class PlayerPoseVisualizer:
                 print(f"Drawing skeleton took {time.time() - t0:.2f} sec")
 
         t0 = time.time()
-        for position in ["upper", "lower"]:
+        for position in player_tracker.regions:
             if player_tracker.players[position] is None:
                 continue
 
-            color = (0, 255, 255) if position == "upper" else (255, 0, 255)
+            color = self.REGION_COLORS.get(position, (255, 255, 255))
             cv2.circle(frame, tuple(map(int, player_tracker.players[position])), 5, color, -1, cv2.LINE_AA)
 
             if self.show_player_trajectories:
@@ -154,6 +164,7 @@ class PlayerPoseVisualizer:
             stats_visualizer.draw_player_stats(frame, cached_movement_stats, rally_count)
             if self.show_performance_stats:
                 print(f"Drawing player stats took {time.time() - t0:.2f} sec")
+
 
     def _draw_skeleton_on_frame(self, frame, keypoints, offset_x, offset_y):
         for person in self._normalize_people(keypoints):

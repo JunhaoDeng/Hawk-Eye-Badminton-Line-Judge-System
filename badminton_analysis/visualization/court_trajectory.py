@@ -5,6 +5,18 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 class CourtTrajectoryVisualizer:
+    # Colours following Good-Badminton source convention:
+    #   upper half → yellow (0,255,255), lower half → magenta (255,0,255)
+    #   Doubles variant: lower_2 uses blue for distinction
+    REGION_COLORS = {
+        "upper":   (0, 255, 255),    # 上半场 — 黄色
+        "lower":   (255, 0, 255),    # 下半场 — 品红
+        "upper_1": (0, 255, 255),    # 上半场球员1 — 黄色
+        "upper_2": (0, 255, 128),    # 上半场球员2 — 青绿
+        "lower_1": (255, 0, 255),    # 下半场球员1 — 品红
+        "lower_2": (0, 128, 255),    # 下半场球员2 — 蓝色
+    }
+
     def __init__(self, width=200, height=400):
         """
         初始化球场轨迹可视化器
@@ -63,9 +75,9 @@ class CourtTrajectoryVisualizer:
         offset_x = int((width - doubles_width * scale) / 2)
         offset_y = int((height - court_length * scale) / 2)
         
-        # 绘制球场线
+        # 绘制球场线 — Y轴翻转：court Y=0 映射到图像底部，court Y=13.4 映射到图像顶部
         def scale_point(x, y):
-            return (int(x * scale + offset_x), int(y * scale + offset_y))
+            return (int(x * scale + offset_x), int((court_length - y) * scale + offset_y))
         
         # 计算线宽（像素）
         line_width_px = max(1, int(line_width * scale))
@@ -130,82 +142,75 @@ class CourtTrajectoryVisualizer:
 
     def draw_overlay(self, frame, court_history):
         """
-        在视频帧上绘制球场和球员轨迹
+        在视频帧上绘制球场和球员轨迹（右上角叠加，黄色=上半场，品红/蓝=下半场）
         Args:
             frame: 视频帧
-            court_history: 包含'upper'和'lower'键的字典，值为球员在球场坐标系中的历史位置列表
+            court_history: 包含'upper'/'lower'（及双打'upper_1'/'upper_2'/'lower_1'/'lower_2'）键的字典
         """
         try:
             # 获取视频帧尺寸计算缩放因子
             frame_height, frame_width = frame.shape[:2]
-            # 计算缩放因子，基于1920x1080的参考分辨率
-            scale_factor = min(frame_width / 1920.0, frame_height / 1080.0) * 1.5  # 增加系数使轨迹更明显
-            
+            scale_factor = min(frame_width / 1920.0, frame_height / 1080.0) * 1.5  # 匹配源版缩放
+
             # 根据视频尺寸计算小球场大小
             court_overlay_width = int(self.default_width * scale_factor)
             court_overlay_height = int(self.default_height * scale_factor)
-            
+
             # 如果尺寸发生了变化，重新创建球场图像
             if court_overlay_width != self.width or court_overlay_height != self.height:
                 self.width = court_overlay_width
                 self.height = court_overlay_height
                 self.court_overlay = self._create_court_overlay(self.width, self.height)
-            
+
             # 创建球场图像副本
             overlay = self.court_overlay.copy()
-            
+
             # 获取小球场的实际绘制区域（排除边距）
             height, width = overlay.shape[:2]
-            margin = max(5, int(10 * scale_factor))  # 调整边距
-            court_width = width - margin*2  
-            court_height = height - margin*2
-            
+            margin = max(5, int(10 * scale_factor))
+            court_width = width - margin * 2
+            court_height = height - margin * 2
+
             # 计算偏移量
             offset_x = margin
             offset_y = margin
-            
+
             # 标准羽毛球场地尺寸（米）
-            doubles_width = 6.10  # 双打场地宽度
-            court_length = 13.40  # 场地长度
-            
-            # 绘制球员轨迹（合并上下方球员的逻辑）
-            for position, color in [('upper', (0, 255, 255)), ('lower', (255, 0, 255))]:
-                if position in court_history:
-                    history = court_history[position]
-                    # 将deque转换为列表以便处理
-                    history_list = list(history)
-                    
-                    for i, pos in enumerate(history_list):
-                        if pos is not None and len(pos) >= 2:
-                            # 将球场坐标归一化，然后转换为小球场坐标
-                            x_norm = pos[0] / doubles_width
-                            y_norm = pos[1] / court_length
-                            
-                            x = int(x_norm * court_width + offset_x)
-                            y = int(y_norm * court_height + offset_y)
-                            
-                            if 0 <= x < width and 0 <= y < height:
-                                # 计算半径，越新的点半径越大，根据视频尺寸缩放
-                                radius_min = max(2, int(2 * scale_factor))
-                                radius_max = max(3, int(5 * scale_factor))
-                                radius = int(radius_min + (i / len(history_list)) * (radius_max - radius_min)) if len(history_list) > 1 else radius_min
-                                cv2.circle(overlay, (x, y), radius, color, -1)  # upper:黄青色, lower:品红色
-                
-            # 将球场叠加到视频帧的右上角
+            doubles_width = 6.10
+            court_length = 13.40
+
+            # 绘制球员轨迹（遍历 court_history 所有键，按 REGION_COLORS 着色）
+            for position, history in court_history.items():
+                color = self.REGION_COLORS.get(position, (200, 200, 200))
+                history_list = list(history)
+
+                for i, pos in enumerate(history_list):
+                    if pos is not None and len(pos) >= 2:
+                        x_norm = pos[0] / doubles_width
+                        y_norm = pos[1] / court_length
+
+                        x = int(x_norm * court_width + offset_x)
+                        # Flip Y: court Y=0 → bottom, court Y=13.4 → top
+                        y = int((1 - y_norm) * court_height + offset_y)
+
+                        if 0 <= x < width and 0 <= y < height:
+                            radius_min = max(2, int(2 * scale_factor))
+                            radius_max = max(3, int(5 * scale_factor))
+                            radius = int(radius_min + (i / len(history_list)) * (radius_max - radius_min)) if len(history_list) > 1 else radius_min
+                            cv2.circle(overlay, (x, y), radius, color, -1)
+
+            # 将球场叠加到视频帧的右上角（匹配源版位置）
             h, w = overlay.shape[:2]
-            # 计算放置位置，根据视频尺寸缩放边距
             padding = max(10, int(20 * scale_factor))
-            # 确保ROI区域在frame的有效范围内
-            if frame.shape[0] >= padding+h and frame.shape[1] >= padding+w:
-                roi = frame[padding:padding+h, frame.shape[1]-w-padding:frame.shape[1]-padding]
+            if frame.shape[0] >= padding + h and frame.shape[1] >= padding + w:
+                roi = frame[padding:padding + h, frame.shape[1] - w - padding:frame.shape[1] - padding]
                 if roi.shape == overlay.shape:
-                    # 应用半透明效果
                     cv2.addWeighted(overlay, 0.7, roi, 0.3, 0, roi)
-                    frame[padding:padding+h, frame.shape[1]-w-padding:frame.shape[1]-padding] = roi
-                
+                    frame[padding:padding + h, frame.shape[1] - w - padding:frame.shape[1] - padding] = roi
+
         except Exception as e:
             print(f"绘制球场轨迹出错: {e}")
-            
+
         return frame
 
 if __name__ == '__main__':

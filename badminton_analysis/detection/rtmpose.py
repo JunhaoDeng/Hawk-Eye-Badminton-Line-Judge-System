@@ -17,7 +17,7 @@ class RTMPoseProcessor:
             ort.set_default_logger_severity(3)
         except Exception:
             pass
-        # 设备自动检测：优先使用 CUDA（若可用）
+        # 设备自动检测：CUDA > MPS > CPU
         if device in (None, 'auto'):
             selected = 'cpu'
             try:
@@ -25,12 +25,17 @@ class RTMPoseProcessor:
                 # noinspection PyUnresolvedReferences
                 if torch.cuda.is_available():
                     selected = 'cuda'
+                elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    selected = 'mps'
             except Exception:
                 selected = 'cpu'
             self.device = selected
         else:
             self.device = device
         self.backend = backend
+        # ONNX Runtime (rtmlib) 暂不支持 MPS/CoreML，MPS 模式下姿态估计仍用 CPU
+        # YOLO 模型（pose/shuttlecock）会直接使用 MPS，获得主要加速
+        self._onnx_device = 'cpu' if self.device == 'mps' else self.device
         
         # Initialize RTMPose model
         self.init_rtmpose(mode)
@@ -67,7 +72,7 @@ class RTMPoseProcessor:
                 pose_model,
                 model_input_size=(640, 640),
                 backend=self.backend,
-                device=self.device
+                device=self._onnx_device
             )
 
         print("Local RTMO model file not found, using online download")
@@ -75,13 +80,16 @@ class RTMPoseProcessor:
             pose='rtmo',
             mode=mode,
             backend=self.backend,
-            device=self.device
+            device=self._onnx_device
         )
 
     def init_rtmpose(self, mode='balanced'):
         """Initialize RTMPose model"""
         try:
-            print(f"Initializing pose model (family: {self.pose_family}, mode: {mode}, backend: {self.backend}, device: {self.device})")
+            if self.device == 'mps':
+                print(f"[INFO] MPS mode selected. RTMPose (ONNX Runtime) will run on CPU (rtmlib limitation), "
+                      "YOLO models will use MPS GPU for main acceleration.")
+            print(f"Initializing pose model (family: {self.pose_family}, mode: {mode}, backend: {self.backend}, device: {self.device}, onnx_device: {self._onnx_device})")
             if self.pose_family == 'rtmo':
                 self.wholebody = self.create_rtmo_model(mode)
                 print("RTMO model initialization successful")
@@ -112,7 +120,7 @@ class RTMPoseProcessor:
                         pose=pose_model,
                         pose_input_size=pose_input_size,
                         backend=self.backend,
-                        device=self.device
+                        device=self._onnx_device
                     )
                     print("RTMPose local model initialization successful")
                     return
@@ -125,7 +133,7 @@ class RTMPoseProcessor:
             self.wholebody = Body(
                 mode=mode,
                 backend=self.backend,
-                device=self.device
+                device=self._onnx_device
             )
             print("RTMPose online model initialization successful")
             
@@ -137,6 +145,7 @@ class RTMPoseProcessor:
                 try:
                     print("Falling back to CPU for RTMPose...")
                     self.device = 'cpu'
+                    self._onnx_device = 'cpu'
                     # Retry initialization on CPU
                     print(f"Initializing pose model (family: {self.pose_family}, mode: {mode}, backend: {self.backend}, device: {self.device})")
                     if self.pose_family == 'rtmo':
@@ -162,7 +171,7 @@ class RTMPoseProcessor:
                                 pose=pose_model,
                                 pose_input_size=pose_input_size,
                                 backend=self.backend,
-                                device=self.device
+                                device=self._onnx_device
                             )
                             print("RTMPose CPU model initialization successful")
                             return
@@ -170,7 +179,7 @@ class RTMPoseProcessor:
                     self.wholebody = Body(
                         mode=mode,
                         backend=self.backend,
-                        device=self.device
+                        device=self._onnx_device
                     )
                     print("RTMPose CPU online model initialization successful")
                 except Exception as e2:

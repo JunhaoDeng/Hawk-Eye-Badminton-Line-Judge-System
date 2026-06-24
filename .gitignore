@@ -1,8 +1,11 @@
+# ============================
 # Python
+# ============================
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -11,19 +14,53 @@ venv/
 env/
 .agents/
 
-# Local inputs and generated outputs
+# ============================
+# Node.js
+# ============================
+node_modules/
+frontend/dist/
+server/node_modules/
+
+# ============================
+# Environment
+# ============================
+.env
+.env.local
+.env.*.local
+
+# ============================
+# Local inputs and outputs
+# ============================
 results/
+videos/
 *.log
 
-# Model weights are intentionally not published
+# ============================
+# Model weights (intentionally not published)
+# ============================
 weights/*
 !weights/.gitkeep
 *.pt
 *.pth
 *.onnx
 
-# OS and editor files
+# ============================
+# Generated / temp
+# ============================
+screenshots/
+temp/
+tmp/
+uploads/
+
+# ============================
+# IDE & editor
+# ============================
+.codebuddy/
+.qoder/
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+*.swp
+*.swo
+*~

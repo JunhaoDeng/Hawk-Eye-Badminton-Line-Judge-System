@@ -6,7 +6,7 @@
 [![GitHub forks](https://img.shields.io/github/forks/yo-WASSUP/Good-Badminton?style=social)](https://github.com/yo-WASSUP/Good-Badminton/network/members)
 [![GitHub license](https://img.shields.io/github/license/yo-WASSUP/Good-Badminton)](https://github.com/yo-WASSUP/Good-Badminton/blob/main/LICENSE)
 
-**基于计算机视觉的羽毛球比赛视频分析工具**
+**基于计算机视觉的羽毛球比赛视频分析工具 — 支持 CLI 命令行 + Web 管理界面**
 
 [中文](README.md) | [English](README_EN.md)
 
@@ -16,139 +16,196 @@
 
 ![Good-Badminton 分析结果预览](assets/demo.gif)
 
-视频效果在 `assets/demo.mp4`。
-
-## 🆕 更新日志
-- **2026-06-20**：正式开源。
-- **2026-06-17**：整理项目介绍文档。
-- **当前版本**：支持球员姿态检测、羽毛球检测、球场坐标映射、轨迹统计、热力图/散点图和带标注视频输出。
-- **实验功能**：击球点分析和技术动作统计仍在迭代中，适合研究和二次开发使用。
-
-## 🔮 开发计划
-
-- [x] 羽毛球比赛视频逐帧分析
-- [x] RTMPose / RTMO / YOLO Pose 多姿态模型支持
-- [x] YOLO 羽毛球检测模型接入
-- [x] 手动球场标注与球场坐标映射
-- [x] 球员移动轨迹、速度、距离和回合统计
-- [x] 中文 / 英文可视化文字
-- [x] 热力图、散点图和检测数据导出
-- [ ] 更稳定的击球点识别
-- [ ] 更精确的羽毛球检测模型
-- [ ] 更完整的技术动作统计
-- [ ] 自动球场关键点检测
-- [ ] 批量视频分析工作流
+视频预览文件在 `assets/demo.mp4`。
 
 ---
 
-## ✨ 功能
+## 🆕 更新日志
 
-- **球员姿态检测** - 支持 RTMPose、RTMO 和 Ultralytics YOLO Pose，识别人体关键点和骨架。
-- **羽毛球检测** - 使用 YOLO 模型检测羽毛球位置，并在输出视频中绘制轨迹。
-- **球场坐标映射** - 手动标注球场关键点，将图像坐标映射到标准球场坐标。
-- **球员位置追踪** - 分别追踪上半场和下半场球员位置，记录移动轨迹。
-- **回合检测** - 根据连续球场视图自动判断回合开始和结束，并在视频叠加层和检测数据中记录回合编号。
-- **运动统计分析** - 统计移动距离、当前速度、最大速度和回合数量。
-- **可视化输出** - 生成带骨架、轨迹、统计信息和球场轨迹的分析视频。
-- **位置图表** - 自动生成球员位置热力图和散点图。
-- **中英文显示** - 可通过 `--language zh/en` 切换可视化文字。
-- **本地运行** - 视频、模型和分析结果都保存在本地。
+- **2026-06-24**：修复可视化 Y 轴方向（上半场/下半场球员不再标反）；优化 Web 端标注流程（默认手动标注，自动检测仅预览）；修复快速标注坐标缩放问题。
+- **2026-06-23**：新增 Web 管理界面（React + Koa + MongoDB），支持用户注册/登录、视频上传、批量分析、历史记录管理、分析结果在线预览与下载。新增 MPS（Apple Silicon GPU）推理加速选项。
+- **2026-06-20**：正式开源。
+- **当前版本**：球员姿态检测、羽毛球检测追踪、球场坐标映射、回合自动检测、运动统计、热力图/散点图、带标注视频输出。
+
+---
+
+## ✨ 功能特性
+
+### AI 视频分析
+
+- **球员姿态检测** — 支持 RTMPose、RTMO 和 Ultralytics YOLO Pose 三种姿态模型，识别人体 17 个关键点
+- **羽毛球检测与追踪** — YOLO 模型实时检测羽毛球位置，卡尔曼滤波轨迹追踪，支持轨迹可视化
+- **球场坐标映射** — 手动或自动标注球场四角，将像素坐标转换为标准球场米制坐标（6.1m × 13.4m）
+- **回合自动检测** — 基于模板匹配的状态机，连续 5 帧匹配到球场视图则判定回合开始，连续 5 帧未匹配则判定回合结束
+- **球员追踪** — 区分上/下半场球员，支持单打/双打模式，逐球员追踪质心位置
+- **运动统计** — 累计移动距离、瞬时速度、最大速度、回合数量
+- **位置可视化** — 自动生成每场比赛和各回合的球员位置热力图与散点图
+- **GPU 加速** — 支持 NVIDIA CUDA 和 Apple Silicon MPS（Metal Performance Shaders），前端可一键切换
+
+### Web 管理平台
+
+- **用户系统** — 邮箱注册/登录，JWT 认证
+- **视频上传** — 支持单文件/批量上传，拖拽上传，自动提取视频首帧截图
+- **球场标注** — Web 端交互式四点标注，支持自动角点检测预览（背景建模 + 边缘分析），可微调后确认
+- **分析管理** — 一键启动分析，实时查看进度，支持最多 2 个并发任务
+- **结果浏览** — 在线播放带标注视频，查看热力图/散点图，下载分析结果
+- **历史记录** — 分页查看所有分析记录，按状态筛选，支持删除
+
+### 可视化叠加层（全部可独立开关）
+
+- 人体骨架与关键点
+- 球员移动轨迹（像素坐标叠加）
+- 球场俯视轨迹（球场坐标系叠加）
+- 羽毛球轨迹
+- 球员统计信息（距离、速度、回合）
+- 中英文双语界面
+
+---
 
 ## 📋 系统要求
 
-- Python 3.8+
-- FFmpeg，并已加入系统 `PATH`
-- OpenCV / PyTorch / Ultralytics / RTMLib / ONNX Runtime
-- 推荐 NVIDIA GPU；CPU 可以运行，但视频分析速度会明显变慢
-- 羽毛球 YOLO 检测权重 `weights/yolo11s-ball.pt`，请从项目 GitHub Release 下载
+| 组件 | 要求 |
+|------|------|
+| Python | 3.8+ |
+| Node.js | 18+（Web 管理平台需要） |
+| MongoDB | 4.0+（Web 管理平台需要） |
+| FFmpeg | 已加入系统 PATH |
+| GPU（可选） | NVIDIA CUDA 12.x / Apple Silicon MPS |
 
-## 🚀 安装指南
+---
 
-默认依赖使用 CPU 版 PyTorch 和 ONNX Runtime。
+## 🚀 快速开始
 
-### Windows
+### 方式一：命令行运行（轻量，无需 Web）
 
 ```bash
+# 1. 创建虚拟环境
 python -m venv .venv
-.\.venv\Scripts\activate
-python -m pip install --upgrade pip
+source .venv/bin/activate  # macOS/Linux
+# .\.venv\Scripts\activate  # Windows
+
+# 2. 安装依赖
 pip install -r requirements.txt
+
+# 3. 下载羽毛球检测模型（从 GitHub Release 下载 yolo11s-ball.pt 放到 weights/ 目录）
+
+# 4. 运行分析
+python main.py --video-path videos/demo.mp4
 ```
 
-### Linux / macOS
+首次运行会弹出文件选择框让你选一张球场模板图，然后交互式标注球场四角。标注结果会缓存，后续运行同一视频无需重复标注。
+
+### 方式二：Web 管理平台运行（完整功能）
+
+#### 前提条件
+
+- **MongoDB** 已安装并启动（默认连接 `mongodb://127.0.0.1:27017/badminton_analysis`）
+  ```bash
+  # macOS（Homebrew 安装）
+  brew install mongodb-community
+  brew services start mongodb-community
+
+  # 验证
+  mongosh --eval "db.version()"
+  ```
+- **Python 虚拟环境** 已创建并安装依赖（参考上方"方式一"）
+
+#### 步骤一：配置并启动后端服务（端口 9000）
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+cd server
+npm install
 ```
 
-### GPU 加速（Windows / NVIDIA）
+编辑 `server/config/dev.json`（开发环境）或 `server/config/default.json`（生产环境），确保路径正确：
 
-前置要求：
+```json
+{
+  "port": 9000,
+  "mongodb": {
+    "host": "mongodb://127.0.0.1:27017/badminton_analysis"
+  },
+  "pythonPath": ".venv/bin/python",
+  "projectRoot": ".."
+}
+```
 
-- 已安装 NVIDIA 显卡驱动，`nvidia-smi` 可以正常输出显卡信息。
-- 推荐使用 CUDA 12.1 对应的 PyTorch wheel。
-- 如果遇到 DLL 加载失败，先安装或修复 Microsoft Visual C++ Redistributable 2015-2022 x64。
+关键配置项：
 
-PowerShell：
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `port` | 后端监听端口 | `9000` |
+| `mongodb.host` | MongoDB 连接地址 | `mongodb://127.0.0.1:27017/badminton_analysis` |
+| `pythonPath` | Python 解释器路径（相对于 server 目录或绝对路径） | `.venv/bin/python` 或 `/usr/bin/python3` |
+| `projectRoot` | 项目根目录相对于 server 的路径 | `..` |
+| `maxConcurrent` | 最大并发分析任务数（默认 `default.json`） | `2` |
+
+启动后端：
 
 ```bash
-.\.venv\Scripts\activate
+# macOS / Linux
+NODE_ENV=dev node index.js
 
-pip uninstall -y torch torchvision onnxruntime onnxruntime-gpu
-pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 --index-url https://download.pytorch.org/whl/cu121
-pip install onnxruntime-gpu==1.20.1
+# Windows (PowerShell)
+$env:NODE_ENV="dev"; node index.js
+
+# Windows (CMD)
+set NODE_ENV=dev && node index.js
 ```
 
-验证 GPU 是否生效：
+看到以下输出表示启动成功：
+```
+Badminton Analysis Server running at http://localhost:9000
+```
+
+验证后端是否正常：
+```bash
+curl http://localhost:9000/api/v1/health
+# 返回 {"code":200,"success":true,"msg":"ok","data":{"status":"running"}}
+```
+
+#### 步骤二：启动前端开发服务器（端口 3000）
+
+打开新终端：
 
 ```bash
-python -c "import torch; print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('gpu:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available')"
-python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
+cd frontend
+npm install
+npx vite --host 0.0.0.0 --port 3000
 ```
 
-期望看到：
+#### 步骤三：打开浏览器
 
-```text
-cuda: True
-CUDAExecutionProvider
+访问 `http://localhost:3000` → 注册账号 → 登录 → 上传视频 → 标注球场 → 启动分析 → 查看结果
+
+> **后端启动 FAQ：**
+> - Q: 启动报 `connect ECONNREFUSED 127.0.0.1:27017`？→ MongoDB 未启动，先执行 `brew services start mongodb-community`
+> - Q: 分析任务报 `spawn python ENOENT`？→ `pythonPath` 配置路径不正确，检查 `config/dev.json`
+> - Q: 端口 9000 被占用？→ 修改 `config/dev.json` 中的 `port`，同时更新 `frontend/vite.config.js` 中的 proxy 地址
+> - Q: Windows 下 MongoDB 怎么装？→ 下载 [MongoDB Community Server](https://www.mongodb.com/try/download/community) 安装包，或使用 Docker
+
+> **提示**：前端（3000 端口）通过 Vite 代理转发 API 请求到后端（9000 端口），开发时前端会自动热更新。
+
+---
+
+## 🧭 Web 平台工作流程
+
+```
+注册/登录 → 上传视频 → 标注球场（手动点击 / 自动检测+微调）→ 启动分析 → 查看结果 → 下载
 ```
 
-> 注意：安装 GPU 版 ONNX Runtime 后，`pip check` 可能提示 `rtmlib requires onnxruntime, which is not installed`。只要 provider 验证能看到 `CUDAExecutionProvider`，就不要再安装 CPU 版 `onnxruntime`，否则可能覆盖 GPU 包。
+| 步骤 | 页面 | 说明 |
+|------|------|------|
+| 注册/登录 | `/login` | 邮箱 + 密码注册，JWT 30 天有效 |
+| 上传视频 | `/upload` | 支持拖拽上传、选择单打/双打模式、CPU/MPS GPU 切换 |
+| 球场标注 | `/annotate/:id` | 默认手动标注四角点；可点击"自动检测角点"生成预览，确认后微调再提交 |
+| 启动分析 | `/analysis/:id` | 一键触发分析，实时轮询进度，完成后可跳转结果页 |
+| 查看结果 | `/results/:id` | 在线播放标注视频，浏览热力图/散点图，下载 JSONL 数据 |
+| 历史记录 | `/history` | 分页查看所有分析任务，按状态筛选，支持删除 |
 
-切回 CPU 版：
+---
 
-```bash
-pip install --force-reinstall -r requirements.txt
-```
-
-## 📦 模型准备
-
-羽毛球检测默认使用本项目发布的 YOLO 权重。请从 GitHub Release 下载 `yolo11s-ball.pt`：
-
-```text
-https://github.com/yo-WASSUP/Good-Badminton/releases
-```
-
-下载后放到：
-
-```text
-weights/yolo11s-ball.pt
-```
-
-RTMPose / RTMO 可以使用本地 ONNX 模型文件：
-
-```text
-weights/yolox_nano_8xb8-300e_humanart-40f6f0d0.onnx
-weights/rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.onnx
-weights/rtmo-s_8xb32-600e_body7-640x640-dac2bf74_20231211.onnx
-```
-
-本地 RTMPose / RTMO 文件不存在时，`rtmlib` 可能会尝试在线下载到用户缓存目录。
-
-## 📝 使用指南
+## 📝 命令行使用详解
 
 ### 基础运行
 
@@ -156,123 +213,261 @@ weights/rtmo-s_8xb32-600e_body7-640x640-dac2bf74_20231211.onnx
 python main.py --video-path videos/demo.mp4
 ```
 
-### 第一次运行流程
-
-1. 准备输入视频和羽毛球检测权重。
-2. 运行基础命令：
-
-```bash
-python main.py --video-path videos/demo.mp4
-```
-
-3. 如果没有传 `--template-path`，程序会弹出文件选择框，让你选择一张球场模板图。模板图通常选视频里视角稳定、球场线清楚的一帧。
-4. 程序会打开球场标注窗口。按图片顶部提示，依次点击球场四个角点：左上、右上、右下、左下。
-
-![球场标注示例](assets/label_court_example.png)
-
-5. 点完四个点后，窗口会显示绿色球场框和蓝色姿态检测 ROI 框。ROI 由程序根据球场自动生成。
-6. 标注结果会保存到 `results/<视频文件名>/court_annotations.txt`。同一个输出目录下再次运行会复用这个文件，不会重复要求标注。
-7. 分析结束后，查看 `results/<视频文件名>/detect_<视频文件名>.mp4`、`detections.jsonl` 和 `position_visualizations/`。
-
-为什么要标注球场四点：
-
-- 四个角点用于建立图像坐标到标准羽毛球场坐标的映射。
-- 球员过滤主要依赖球场坐标，能把观众、裁判、场外人员过滤掉。
-- 上下半场球员判断、移动距离、速度、回合统计、热力图和散点图都依赖这个映射。
-- 回合检测基于球场模板匹配：连续多帧识别为比赛视图时开始回合，连续多帧离开比赛视图时结束回合。
-- 姿态检测 ROI 只用于减少推理区域和提升速度；它会自动从球场范围扩展生成。
-- 羽毛球检测仍在整帧上执行，轨迹显示会按球场横向范围加 padding 做基础过滤。
-
-如果你换了视频视角、裁切方式或模板图，需要删除对应输出目录里的 `court_annotations.txt`，重新标注四点。
-
-### 回合检测说明
-
-程序会用球场模板图做比赛视图判断，并自动维护回合状态：
-
-- 连续多帧匹配到球场视图时，判定新回合开始。
-- 连续多帧没有匹配到球场视图时，判定当前回合结束。
-- 回合编号会写入 `detections.jsonl`，并显示在输出视频的统计叠加层中。
-- 每个回合开始时会重置该回合内的移动距离、速度等统计，整场统计继续累计。
-- 这个逻辑依赖模板图和四点球场标注；如果模板图选得不准，回合切分也会不准。
-
-### 姿态模型选择
-
-```bash
-# 默认：两阶段 RTMPose balanced
-python main.py --video-path videos/demo.mp4 --pose-family rtmpose --pose-mode balanced
-
-# 更轻量的一阶段 RTMO
-python main.py --video-path videos/demo.mp4 --pose-family rtmo --pose-mode lightweight
-
-# 使用 Ultralytics YOLO Pose
-python main.py --video-path videos/demo.mp4 --pose-family yolo-pose --yolo-pose-model yolo11n-pose.pt
-```
-
-RTMPose 模型档位：
-
-- `lightweight`：速度优先。
-- `balanced`：默认配置，速度和效果折中。
-- `performance`：更大模型，速度更慢，通常更适合追求检测质量。
-
-### 常用参数
+### 完整参数列表
 
 ```text
---video-path                 输入视频路径，必填
+--video-path                 输入视频路径（必填）
 --output-dir                 输出目录，默认 results/<视频文件名>
 --ball-model                 YOLO 羽毛球检测模型路径，默认 weights/yolo11s-ball.pt
---pose-family                姿态模型族：rtmpose、rtmo 或 yolo-pose
---pose-mode                  RTMPose / RTMO 档位：lightweight、balanced、performance
---yolo-pose-model            YOLO pose 模型路径或模型名，默认 yolo11n-pose.pt
---template-path              球场模板图路径；不传时会弹出文件选择框
---pose-roi true|false                是否显示姿态检测 ROI 框，默认 true
---display true|false                 是否显示 OpenCV 预览窗口，默认 true
---skeletons true|false               是否显示人体骨架，默认 true
---player-trajectories true|false     是否显示球员轨迹，默认 true
---court-trajectory true|false        是否显示球场轨迹叠加层，默认 true
---shuttlecock-trajectory true|false  是否显示羽毛球轨迹，默认 true
---player-stats true|false            是否显示球员统计信息，默认 true
---performance-stats                  打印性能耗时
+--pose-family                姿态模型族：rtmpose（默认）、rtmo、yolo-pose
+--pose-mode                  模型档位：lightweight / balanced（默认）/ performance
+--yolo-pose-model            YOLO Pose 模型路径，默认 yolo11n-pose.pt
+--template-path              球场模板图路径（不传则弹出文件选择框）
+--mode                       比赛模式：singles（单打，默认）/ doubles（双打）
+--device                     推理设备：cpu（默认）/ mps（Apple Silicon GPU）
+--language                   界面语言：zh（中文，默认）/ en（英文）
+
+--pose-roi true|false                显示姿态检测 ROI 框（默认 true）
+--display true|false                 显示 OpenCV 预览窗口（默认 true）
+--skeletons true|false               显示人体骨架（默认 true）
+--player-trajectories true|false     显示球员轨迹（默认 true）
+--court-trajectory true|false        显示球场俯视轨迹（默认 true）
+--shuttlecock-trajectory true|false  显示羽毛球轨迹（默认 true）
+--player-stats true|false            显示球员统计信息（默认 true）
+--visualize-positions true|false     生成热力图和散点图（默认 true）
+--audio true|false                   保留原视频音频（默认 true）
+
 --save-images                        保存处理后的每帧图像
---visualize-positions true|false     是否生成热力图和散点图，默认 true
---audio true|false                   是否保留原视频音频，默认 true
---language {zh,en}           选择界面语言
+--performance-stats                  打印性能耗时统计
 ```
+
+### 姿态模型选择示例
+
+```bash
+# 两阶段 RTMPose（默认，精度较高，速度适中）
+python main.py --video-path videos/demo.mp4 --pose-family rtmpose --pose-mode balanced
+
+# 一阶段 RTMO（轻量，速度更快）
+python main.py --video-path videos/demo.mp4 --pose-family rtmo --pose-mode lightweight
+
+# YOLO Pose（Ultralytics 生态，部署简单）
+python main.py --video-path videos/demo.mp4 --pose-family yolo-pose --yolo-pose-model yolo11n-pose.pt
+
+# 双打模式 + MPS GPU 加速（Apple Silicon Mac）
+python main.py --video-path videos/demo.mp4 --mode doubles --device mps
+```
+
+### GPU 加速配置
+
+#### Apple Silicon (M1/M2/M3/M4) — MPS
+
+```bash
+python main.py --video-path videos/demo.mp4 --device mps
+```
+
+MPS 模式下 YOLO 模型（羽毛球检测 + YOLO-Pose）使用 Apple GPU 加速，RTMPose/RTMO（ONNX Runtime）因 rtmlib 限制仍用 CPU，但已获得主要加速。
+
+#### NVIDIA GPU — CUDA
+
+```bash
+# 安装 GPU 版依赖
+pip uninstall -y torch torchvision onnxruntime onnxruntime-gpu
+pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install onnxruntime-gpu==1.20.1
+```
+
+### 球场标注说明
+
+第一次运行某个视频时，需要标注球场四角：
+
+1. 程序会打开标注窗口，顶部提示操作步骤
+2. 按顺序点击球场四个角点：**左上 → 右上 → 右下 → 左下**
+3. 点击完成后窗口显示绿色球场框和蓝色姿态检测 ROI 框
+4. 标注结果保存到 `results/<视频名>/court_annotations.txt`，后续运行自动复用
+
+**为什么需要标注？**
+- 四角点用于建立图像坐标到标准球场坐标的透视映射
+- 球员过滤依赖球场坐标，可排除观众、裁判等场外人员
+- 上下半场判断、距离/速度统计、热力图/散点图均依赖该映射
+- 姿态检测 ROI 由球场范围自动扩展生成，仅用于缩小推理区域、提升速度
+- 更换视频视角或模板图后，需删除 `court_annotations.txt` 重新标注
+
+---
 
 ## 📊 输出结果
 
-默认输出到 `results/<视频文件名>/`：
+默认输出目录 `results/<视频文件名>/`：
 
-- `metadata.json`：视频、模型、球场标注和输出文件元数据。
-- `detections.jsonl`：逐帧检测记录，包含回合编号、球员、手部、球场坐标、速度和羽毛球坐标。
-- `detect_<视频文件名>.mp4`：带骨架、轨迹、统计信息和回合编号叠加层的输出视频。
-- `court_annotations.txt`：球场标注坐标缓存。
-- `position_visualizations/heatmaps/`：球员位置热力图。
-- `position_visualizations/scatter_plots/`：球员位置散点图。
+```
+results/<视频名>/
+├── detect_<视频名>.mp4              # 带标注的输出视频
+├── detections.jsonl                 # 逐帧检测记录（含回合编号、球场坐标、速度）
+├── metadata.json                    # 视频/模型/球场标注元数据
+├── court_annotations.txt            # 球场四点标注缓存
+├── detect_images/                   # --save-images 时保存的逐帧图像
+└── position_visualizations/
+    ├── heatmaps/                    # 球员位置热力图（match + 各回合）
+    └── scatter_plots/               # 球员位置散点图
+```
 
 ### 位置可视化示例
 
 | 热力图 | 散点图 |
-| --- | --- |
-| ![球员位置热力图示例](assets/match_heatmap.png) | ![球员位置散点图示例](assets/match_scatter.png) |
+|:---:|:---:|
+| ![热力图示例](assets/match_heatmap.png) | ![散点图示例](assets/match_scatter.png) |
+
+---
+
+## 📦 模型准备
+
+羽毛球检测模型 `yolo11s-ball.pt` 需从 [GitHub Release](https://github.com/yo-WASSUP/Good-Badminton/releases) 下载并放入 `weights/` 目录。
+
+姿态模型可放入本地文件（`rtmlib` 会自动检测并使用）：
+
+```
+weights/
+├── yolo11s-ball.pt                                          # 羽毛球检测（必下载）
+├── yolox_nano_8xb8-300e_humanart-40f6f0d0.onnx              # YOLOX 人体检测（RTMPose 两阶段）
+├── rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.onnx  # RTMPose 姿态估计
+└── rtmo-s_8xb32-600e_body7-640x640-dac2bf74_20231211.onnx   # RTMO 一阶段姿态
+```
+
+若本地文件不存在，`rtmlib` 会尝试在线下载到用户缓存目录。
+
+---
 
 ## 🧩 项目结构
 
-```text
-main.py              # 命令行入口和参数解析，保持 python main.py ... 的运行方式
-badminton_analysis/
-├── system.py        # 视频分析主流程 BadmintonAnalysisSystem
-├── court/           # 球场标注与坐标映射
-├── data/            # JSON / JSONL 输出
-├── detection/       # 羽毛球检测与姿态检测
-├── media/           # 视频音频处理
-├── tracking/        # 球员追踪
-└── visualization/   # 视频叠加层、统计图和位置图
 ```
+Good-Badminton/
+├── main.py                          # CLI 入口（argparse 参数解析）
+├── requirements.txt                 # Python 依赖
+├── badminton_analysis/              # Python 核心分析包
+│   ├── __init__.py                  # 包标识，__version__ = "0.1.0"
+│   ├── system.py                    # 主流程编排（逐帧处理、回合检测状态机）
+│   ├── court/
+│   │   ├── mapper.py                # 球场映射（透视变换、标注 GUI、ROI 生成）
+│   │   └── detector.py              # 球场角点自动检测（线检测 + 四边形拟合）
+│   ├── data/
+│   │   └── writer.py                # 检测结果写入（JSONL + JSON）
+│   ├── detection/
+│   │   ├── rtmpose.py               # RTMPose/RTMO 姿态检测器（ONNX Runtime + rtmlib）
+│   │   ├── yolo_pose.py             # YOLO Pose 姿态检测器（Ultralytics）
+│   │   └── shuttlecock.py           # 羽毛球检测追踪器（YOLO + 卡尔曼滤波）
+│   ├── media/
+│   │   └── video_audio.py           # 视频写入 & FFmpeg 音频合并
+│   ├── tracking/
+│   │   └── player.py                # 球员追踪器（质心追踪、上下半场分配、移动统计）
+│   ├── visualization/
+│   │   ├── court_trajectory.py      # 球场俯视轨迹叠加
+│   │   ├── player_pose.py           # 骨架绘制 & 球员 ROI
+│   │   ├── player_positions_zh.py   # 中文热力图/散点图生成
+│   │   ├── player_positions_en.py   # 英文热力图/散点图生成
+│   │   └── stats.py                 # 画面统计信息文字渲染
+│   └── utils/
+│       ├── auto_detect_corners.py   # 自动球场角点检测（CLI 入口）
+│       ├── compute_annotation.py    # 从角点计算 ROI & 中线
+│       ├── extract_frame.py         # 视频帧提取
+│       └── resize_template.py       # 模板图尺寸适配
+├── server/                          # Node.js 后端 (Koa + MongoDB)
+│   ├── index.js                     # 服务入口（路由、JWT 认证、静态文件）
+│   ├── package.json
+│   ├── config/
+│   │   ├── default.json             # 默认配置（端口、MongoDB、Python 路径）
+│   │   └── dev.json                 # 开发环境配置
+│   ├── api/
+│   │   ├── auth.js                  # 注册/登录（bcrypt + JWT）
+│   │   ├── health.js                # 健康检查
+│   │   └── video.js                 # 核心 API（上传、标注、分析、结果、下载）
+│   ├── models/                      # Mongoose 数据模型
+│   │   ├── base/model.js            # 基础模型类
+│   │   ├── user.js                  # 用户模型
+│   │   └── analysis.js              # 分析任务模型
+│   ├── plugins/
+│   │   └── mongoose.js              # MongoDB 连接插件（自动加载 models）
+│   └── utils/
+│       └── processPool.js           # 并发控制（最多 2 个分析任务同时运行）
+├── frontend/                        # React 前端 (Vite + TailwindCSS)
+│   ├── vite.config.js               # Vite 配置（代理到后端 9000）
+│   ├── package.json
+│   └── src/
+│       ├── main.jsx                 # 前端入口
+│       ├── App.jsx                  # 路由配置
+│       ├── api.js                   # API 客户端（axios）
+│       ├── components/
+│       │   └── UserMenu.jsx         # 用户菜单组件
+│       └── pages/
+│           ├── Login.jsx            # 登录页
+│           ├── Upload.jsx           # 上传页（模式选择、设备切换、拖拽上传）
+│           ├── Annotate.jsx         # 球场标注页（Web 交互式四点标注）
+│           ├── Analysis.jsx         # 分析页（触发分析 + 实时进度轮询）
+│           ├── Results.jsx          # 结果页（视频播放、热力图/散点图浏览）
+│           ├── History.jsx          # 历史记录页（分页列表、状态筛选、删除）
+│           └── BatchProgress.jsx    # 批量上传进度页
+├── assets/                          # README 配图 & 示例
+├── templates/                       # 球场模板图
+├── weights/                         # 模型权重（需自行下载）
+├── videos/                          # 输入视频目录
+└── results/                         # 分析输出目录
+```
+
+---
+
+## 📊 API 路由一览
+
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|:---:|
+| POST | `/api/v1/auth/register` | 用户注册 | ✗ |
+| POST | `/api/v1/auth/login` | 用户登录 | ✗ |
+| GET | `/api/v1/health` | 健康检查 | ✗ |
+| POST | `/api/v1/video/upload` | 上传单视频 | ✓ |
+| POST | `/api/v1/video/batch-upload` | 批量上传视频 | ✓ |
+| GET | `/api/v1/video/list` | 获取分析列表 | ✓ |
+| GET | `/api/v1/video/status/:id` | 获取分析状态 | ✓ |
+| POST | `/api/v1/video/annotate/:id` | 保存球场标注 | ✓ |
+| POST | `/api/v1/video/auto-annotate/:id` | 触发自动标注 | ✓ |
+| POST | `/api/v1/video/auto-detect-preview/:id` | 自动角点检测预览 | ✓ |
+| POST | `/api/v1/video/analyze/:id` | 启动分析 | ✓ |
+| GET | `/api/v1/video/results/:id` | 获取分析结果 | ✓ |
+| GET | `/api/v1/video/download/:type/:id` | 下载结果文件 | ✓ |
+| DELETE | `/api/v1/video/:id` | 删除分析记录 | ✓ |
+| GET | `/api/v1/video/screenshot/:id` | 获取视频截图 | ✗ |
+| GET | `/api/v1/video/template/:id` | 获取球场模板图 | ✗ |
+
+---
+
+## 🧠 技术架构要点
+
+### 坐标系统
+- 原点在球场**左下角**，X 轴为宽度方向（0~6.1m），Y 轴为长度方向（0~13.4m）
+- 中线在 Y=6.7m 处，据此区分上下半场球员
+- 单打模式：分为上半场（upper）和下半场（lower）两个区域
+- 双打模式：分为 upper_1、upper_2、lower_1、lower_2 四个区域
+- 可视化中 Y=0（近端）在底部，Y=13.4（远端）在顶部，与真实球场方向一致
+
+### 回合检测状态机
+- 使用 `cv2.matchTemplate` 将当前帧与模板图比对（阈值 0.75）
+- 连续 5 帧匹配到 → 回合开始（`rally_id += 1`）
+- 连续 5 帧未匹配 → 回合结束
+- 非球场视图帧不执行姿态/羽毛球检测，直接透传原帧
+
+### 自动角点检测
+- 基于背景建模 + Canny 边缘检测 + HoughLinesP 线段分析
+- 通过线段聚类、四边形拟合筛选候选角点，选取与标准球场尺寸最匹配的四边
+- Web 端标注流程：默认手动标注 → 可选"自动检测角点"预览 → 确认填入 → 微调 → 提交
+- 提交时通过 `compute_annotation.py` 自动将模板图坐标缩放到视频坐标
+
+### 并发控制
+后端通过 `processPool.js` 限制最多 2 个 Python 分析进程同时运行，通过 Node.js `child_process.spawn` 调用 `main.py`，传入 `--device`、`--mode` 等参数。
+
+---
 
 ## 🙏 致谢
 
-感谢 TrackNetV2 羽毛球数据集。 感谢RTMPose的人体姿态检测算法。感谢Ultralytics。
+- [RTMPose](https://github.com/open-mmlab/mmpose) — 人体姿态估计算法
+- [Ultralytics](https://github.com/ultralytics/ultralytics) — YOLO 目标检测框架
+- [TrackNetV2](https://github.com/ChihChiYeh/TrackNetV2) — 羽毛球数据集
 
 ## 📄 许可证
 
-本项目代码和 `weights/yolo11s-ball.pt` 使用 Apache License 2.0。随 Release 提供的 RTMPose / RTMO / YOLOX ONNX 权重来自 OpenMMLab / RTMPose 生态，按其上游 Apache License 2.0 授权使用，并保留原始归属。
+本项目代码和 `weights/yolo11s-ball.pt` 使用 [Apache License 2.0](LICENSE)。RTMPose / RTMO / YOLOX ONNX 权重来自 OpenMMLab / RTMPose 生态，按其上游 Apache License 2.0 授权使用，并保留原始归属。

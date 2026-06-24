@@ -2,7 +2,7 @@ import json
 import os
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 
 
 def _clean_value(value):

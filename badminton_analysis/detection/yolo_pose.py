@@ -12,10 +12,14 @@ class YOLOPoseProcessor:
             try:
                 import torch
                 if torch.cuda.is_available():
-                    selected = 0
+                    selected = 0  # CUDA GPU
+                elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    selected = 'mps'  # Apple Silicon GPU
             except Exception:
                 selected = "cpu"
             self.device = selected
+        elif device == 'mps':
+            self.device = 'mps'
         else:
             self.device = device
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import tempfile
 from tkinter import filedialog
 import tkinter as tk
@@ -66,7 +66,8 @@ class BadmintonAnalysisSystem:
                  save_images=False, language='zh', output_dir=None,
                  ball_model_path='weights/yolo11s-ball.pt', template_path=None,
                  pose_mode='balanced', pose_family='rtmpose',
-                 yolo_pose_model='yolo11n-pose.pt', show_pose_roi=True):
+                 yolo_pose_model='yolo11n-pose.pt', show_pose_roi=True,
+                 mode='singles', device='cpu'):
         self.video_path = video_path
         self.show_display = show_display
         self.language = language
@@ -76,6 +77,8 @@ class BadmintonAnalysisSystem:
         self.pose_family = pose_family
         self.yolo_pose_model = yolo_pose_model
         self.show_pose_roi = show_pose_roi
+        self.mode = mode
+        self.device = device
 
 
         self.show_skeletons = show_skeletons
@@ -99,9 +102,9 @@ class BadmintonAnalysisSystem:
             )
         
         if self.pose_family == 'yolo-pose':
-            self.rtmpose_processor = YOLOPoseProcessor(model_path=self.yolo_pose_model)
+            self.rtmpose_processor = YOLOPoseProcessor(model_path=self.yolo_pose_model, device=self.device)
         else:
-            self.rtmpose_processor = RTMPoseProcessor(mode=self.pose_mode, pose_family=self.pose_family)
+            self.rtmpose_processor = RTMPoseProcessor(mode=self.pose_mode, pose_family=self.pose_family, device=self.device)
         self.yolo_ball_model = YOLO(self.ball_model_path)
 
         self.last_stats_update_frame = 0
@@ -131,7 +134,9 @@ class BadmintonAnalysisSystem:
             yolo_ball_model=self.yolo_ball_model,
             trajectory_length=30,
             show_trajectory=self.show_shuttlecock_trajectory,
-            show_performance_stats=self.show_performance_stats
+            show_performance_stats=self.show_performance_stats,
+            mode=self.mode,
+            device=self.device,
         )
         
         self.player_pose_visualizer = PlayerPoseVisualizer(
@@ -155,6 +160,7 @@ class BadmintonAnalysisSystem:
         self.fps = 30  
         self.court_view_frames_threshold = 5
         self.non_court_frames_threshold = 5
+        self.court_match_threshold = 0.65  # Lower threshold for resized templates
 
         self.frame_width = 0
         self.frame_height = 0
@@ -196,13 +202,15 @@ class BadmintonAnalysisSystem:
         self.court_mapper = CourtMapper(corners)
         self.player_pose_visualizer.court_mapper = self.court_mapper
         self.player_tracker = PlayerTracker(corners=corners, threshold=mid_height, history_size=30,
-                                          detection_writer=self.detection_writer, fps=fps)
+                                          detection_writer=self.detection_writer, fps=fps,
+                                          mode=self.mode)
         
 
         self.stats_visualizer = StatsVisualizer(
             frame_width=self.frame_width,
             frame_height=self.frame_height,
-            language=self.language
+            language=self.language,
+            mode=self.mode
         )
         
         frame_count = 0
@@ -229,6 +237,7 @@ class BadmintonAnalysisSystem:
     def _write_metadata(self, fps, total_frames, video_duration, template_path, corners, roi_corners, mid_height):
         metadata = {
             "schema_version": SCHEMA_VERSION,
+            "mode": self.mode,
             "video": {
                 "path": self.video_path,
                 "name": self.video_name,
@@ -265,7 +274,7 @@ class BadmintonAnalysisSystem:
         
         # frame = self.draw_court_roi(frame, corners, roi_corners)
 
-        is_court = self.is_court_view(gray_frame, template_gray)
+        is_court = self.is_court_view(gray_frame, template_gray, threshold=self.court_match_threshold)
         
         if is_court:
             self.is_court_view_count += 1
@@ -418,22 +427,70 @@ class BadmintonAnalysisSystem:
     def _setup_court_annotation(self, template_color):
         """Set up court annotation."""
 
-        if os.path.exists(os.path.join(self.save_dir, 'court_annotations.txt')):
-            with open(os.path.join(self.save_dir, 'court_annotations.txt'), 'r') as f:
-                corners = eval(f.readline().split('=')[1])
-                f.readline()
-                mid_height = eval(f.readline().split('=')[1])
-                roi_corners = compute_expanded_roi(corners, template_color.shape)
-        else:
-            corners, roi_corners, mid_height = annotate_court(template_color)
-       
-        if not corners or not roi_corners or len(corners) != 4 or len(roi_corners) != 2:
-            raise RuntimeError("Court annotation is incomplete: click 4 court corners in order. ROI is generated automatically.")
+        annotation_path = os.path.join(self.save_dir, 'court_annotations.txt')
+        corners = roi_corners = mid_height = None
+        template_h, template_w = template_color.shape[:2]
 
-        with open(os.path.join(self.save_dir, 'court_annotations.txt'), 'w') as f:
+        if os.path.exists(annotation_path):
+            try:
+                with open(annotation_path, 'r') as f:
+                    lines = f.readlines()
+                if len(lines) >= 3:
+                    corners = eval(lines[0].strip().split('=', 1)[1])
+                    mid_height = eval(lines[2].strip().split('=', 1)[1])
+
+                    # Check for template_shape (line 4) to do precise scaling
+                    stored_shape = None
+                    if len(lines) >= 4 and lines[3].strip().startswith('template_shape='):
+                        stored_shape = eval(lines[3].strip().split('=', 1)[1])
+                    elif len(lines) >= 4:
+                        # Legacy format without template_shape — extract old roi_corners
+                        # to estimate the original template size
+                        try:
+                            old_roi = eval(lines[1].strip().split('=', 1)[1])
+                            # roi_corners is [(x1,y1), (x2,y2)] with y1=0, y2=template_h
+                            # and x1 expanded below min_corner_x, x2 expanded above max_corner_x
+                            old_h = old_roi[1][1] if old_roi[1][1] > 0 else None
+                        except Exception:
+                            old_h = None
+                        if old_h:
+                            stored_shape = [old_h, None]  # height is most reliable
+
+                    # Apply scaling if stored shape differs from current template shape
+                    if stored_shape:
+                        orig_h = stored_shape[0]
+                        if orig_h and orig_h != template_h:
+                            scale_y = template_h / orig_h
+                            scale_x = template_w / stored_shape[1] if stored_shape[1] else scale_y
+                            corners = [[int(round(x * scale_x)), int(round(y * scale_y))] for x, y in corners]
+                            mid_height = int(round(mid_height * scale_y))
+                            print(f"Note: scaled annotation corners to match {template_w}x{template_h} template")
+
+                    roi_corners = compute_expanded_roi(corners, template_color.shape)
+                else:
+                    print(f"Warning: {annotation_path} is incomplete, will re-annotate.")
+                    os.remove(annotation_path)
+            except (IndexError, SyntaxError, ValueError) as e:
+                print(f"Warning: Failed to parse {annotation_path}: {e}, will re-annotate.")
+                os.remove(annotation_path)
+
+        if corners is None or roi_corners is None or len(corners) != 4:
+            auto_preview_path = os.path.join(self.save_dir, 'auto_court_preview.png')
+            corners, roi_corners, mid_height = annotate_court(template_color, auto_preview_path=auto_preview_path)
+
+        if not corners or not roi_corners or len(corners) != 4 or len(roi_corners) != 2:
+            raise RuntimeError(
+                "Court annotation failed. "
+                "Please ensure you provide a valid court template image (--template-path) "
+                "and that a display is available for interactive annotation, "
+                "or pre-create a valid court_annotations.txt in the output directory."
+            )
+
+        with open(annotation_path, 'w') as f:
             f.write(f"corners={corners}\n")
             f.write(f"roi_corners={roi_corners}\n")
             f.write(f"mid_height={mid_height}\n")
+            f.write(f"template_shape={list(template_color.shape[:2])}\n")
         return corners, roi_corners, mid_height
 
     def _cleanup(self, cap):
