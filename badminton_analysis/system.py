@@ -6,6 +6,31 @@ import time
 import argparse
 
 
+def _imread_unicode(path, flags=None):
+    """cv2.imread that handles non-ASCII paths on Windows (e.g. Chinese characters).
+    
+    Uses np.fromfile + cv2.imdecode internally to avoid the Unicode path issue
+    present in certain OpenCV builds on Windows.
+    
+    Args:
+        path: str, image file path
+        flags: int, cv2.IMREAD_* flag (default: IMREAD_COLOR if None)
+    Returns:
+        numpy array or None
+    """
+    if flags is None:
+        import cv2
+        flags = cv2.IMREAD_COLOR
+    import numpy as np
+    import cv2
+    try:
+        with open(path, 'rb') as f:
+            data = np.frombuffer(f.read(), dtype=np.uint8)
+        return cv2.imdecode(data, flags)
+    except Exception:
+        return None
+
+
 def load_runtime_dependencies():
     """Load heavy runtime dependencies after argparse has handled --help."""
     global cv2, np, YOLO, CourtMapper, annotate_court, compute_expanded_roi, PlayerTracker
@@ -397,8 +422,8 @@ class BadmintonAnalysisSystem:
 
     def _load_template(self, template_path, cap):
         """Load and resize the court template image."""
-        template_gray = cv2.imread(template_path, 0)
-        template_color = cv2.imread(template_path)
+        template_gray = _imread_unicode(template_path, cv2.IMREAD_GRAYSCALE)
+        template_color = _imread_unicode(template_path, cv2.IMREAD_COLOR)
         if template_gray is None or template_color is None:
             raise RuntimeError(f"Unable to read court template image: {template_path}")
         
@@ -415,12 +440,15 @@ class BadmintonAnalysisSystem:
         self.temp_output_video_path = os.path.join(self.save_dir, f"temp_detect_{self.video_name}.mp4")
         
 
-        self.video_writer = vap.setup_video_writer(
+        self.video_writer, actual_path = vap.setup_video_writer(
             frame_width=frame_width,
             frame_height=frame_height,
             fps=fps,
             temp_output_path=self.temp_output_video_path
         )
+        # Update path in case AVI fallback was used
+        if actual_path != self.temp_output_video_path:
+            self.temp_output_video_path = actual_path
         
         return self.video_writer
 

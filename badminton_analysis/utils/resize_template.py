@@ -14,6 +14,30 @@ import sys
 import cv2
 
 
+def _imread_unicode(path, flags=cv2.IMREAD_COLOR):
+    """cv2.imread that handles non-ASCII paths on Windows (e.g. Chinese characters)."""
+    import numpy as np
+    try:
+        f = open(path, 'rb')
+        try:
+            data = np.frombuffer(f.read(), dtype=np.uint8)
+        finally:
+            f.close()
+        return cv2.imdecode(data, flags)
+    except Exception:
+        return None
+
+
+def _imwrite_unicode(path, img, ext='.png'):
+    """cv2.imwrite that handles non-ASCII paths on Windows."""
+    success, encoded = cv2.imencode(ext, img)
+    if success:
+        with open(path, 'wb') as f:
+            f.write(encoded.tobytes())
+        return True
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description='Resize template to match video dimensions')
     parser.add_argument('--template-path', required=True, help='Path to the original court template')
@@ -22,8 +46,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Read template
-        template = cv2.imread(args.template_path)
+        # Read template (using _imread_unicode for non-ASCII paths on Windows)
+        template = _imread_unicode(args.template_path)
         if template is None:
             print(json.dumps({"success": False, "error": f"Cannot read template: {args.template_path}"}))
             sys.exit(1)
@@ -42,7 +66,7 @@ def main():
 
         if tpl_w <= video_w and tpl_h <= video_h:
             # Template already fits, just copy
-            cv2.imwrite(args.output_path, template)
+            _imwrite_unicode(args.output_path, template)
             print(json.dumps({
                 "success": True,
                 "resized": False,
@@ -57,7 +81,7 @@ def main():
         new_h = int(tpl_h * scale)
 
         resized = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        cv2.imwrite(args.output_path, resized)
+        _imwrite_unicode(args.output_path, resized)
 
         print(json.dumps({
             "success": True,

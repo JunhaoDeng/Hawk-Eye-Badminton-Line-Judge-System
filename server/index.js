@@ -20,6 +20,7 @@ const bodyParser = require('koa-bodyparser');
 const PUBLIC_PATHS = [
   '/api/v1/auth/login',
   '/api/v1/auth/register',
+  '/api/v1/health',
 ];
 const PUBLIC_PREFIXES = [
   '/api/v1/video/screenshot/',
@@ -86,7 +87,7 @@ app.use(async (ctx, next) => {
 });
 
 let mongodb_conf = config.get('mongodb');
-app.use(require('./plugins/mongoose')({ ...mongodb_conf, schemas: __dirname + '/models' }));
+app.use(require('./plugins/mongoose')({ ...mongodb_conf, schemas: path.join(__dirname, 'models') }));
 
 app.use(async (ctx, next) => {
   ctx.projectRoot = projectRoot;
@@ -108,7 +109,7 @@ function loadActions(dir) {
   }
 }
 
-loadActions(__dirname + '/api');
+loadActions(path.join(__dirname, 'api'));
 
 app.use(router.routes()).use(router.allowedMethods());
 

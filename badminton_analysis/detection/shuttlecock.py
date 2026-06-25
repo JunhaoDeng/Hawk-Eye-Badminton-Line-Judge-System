@@ -62,6 +62,8 @@ class ShuttlecockTracker:
         # 设备选择：手动指定 > 自动检测 (CUDA > MPS > CPU)
         if device == 'mps':
             self.ultra_device = 'mps'
+        elif device == 'cuda':
+            self.ultra_device = 0  # CUDA GPU (YOLO uses integer device ID)
         elif device not in ('cpu', 'auto'):
             self.ultra_device = device
         elif torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():

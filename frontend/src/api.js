@@ -1,5 +1,9 @@
 import axios from 'axios';
 
+// ========== Health (no auth required) ==========
+export const healthCheck = () =>
+  axios.get('/api/v1/health').then(res => res.data);
+
 const api = axios.create({ baseURL: '' });
 
 // Request interceptor — attach JWT token

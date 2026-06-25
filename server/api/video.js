@@ -45,8 +45,8 @@ module.exports = function (router) {
       ctx.body = { code: 400, success: false, msg: 'mode 只能是 singles 或 doubles' };
       return;
     }
-    if (!['cpu', 'mps'].includes(device)) {
-      ctx.body = { code: 400, success: false, msg: 'device 只能是 cpu 或 mps' };
+    if (!['cpu', 'mps', 'cuda'].includes(device)) {
+      ctx.body = { code: 400, success: false, msg: 'device 只能是 cpu、mps 或 cuda' };
       return;
     }
 
@@ -142,8 +142,8 @@ module.exports = function (router) {
       ctx.body = { code: 400, success: false, msg: 'mode 只能是 singles 或 doubles' };
       return;
     }
-    if (!['cpu', 'mps'].includes(device)) {
-      ctx.body = { code: 400, success: false, msg: 'device 只能是 cpu 或 mps' };
+    if (!['cpu', 'mps', 'cuda'].includes(device)) {
+      ctx.body = { code: 400, success: false, msg: 'device 只能是 cpu、mps 或 cuda' };
       return;
     }
 
@@ -265,7 +265,7 @@ module.exports = function (router) {
 
   // ========== Submit court annotation manually (4 corner points) ==========
   router.post('/api/v1/video/annotate/:id', async (ctx) => {
-    const { corners } = ctx.params;
+    const corners = ctx.request.body?.corners;
     if (!corners || !Array.isArray(corners) || corners.length !== 4) {
       ctx.body = { code: 400, success: false, msg: '需要4个角点坐标' };
       return;
@@ -342,15 +342,9 @@ module.exports = function (router) {
       return;
     }
 
-    if (!record.screenshotPath || !fs.existsSync(record.screenshotPath)) {
-      ctx.body = { code: 404, success: false, msg: '截图文件不存在' };
-      return;
-    }
-
-    if (!record.screenshotPath || !fs.existsSync(record.screenshotPath)) {
-      ctx.body = { code: 404, success: false, msg: '截图文件不存在' };
-      return;
-    }
+    // NOTE: Auto-detection runs on the TEMPLATE image, not the video screenshot.
+    // We do NOT check screenshotPath here — the screenshot may be cleaned up
+    // or generated on a different machine, and the detection doesn't need it.
 
     const pythonPath = global.config.get('pythonPath') || 'python';
     const resultDir = path.join(projectRoot, 'results', record.videoName);
@@ -601,7 +595,7 @@ module.exports = function (router) {
 
   // ========== Batch status query ==========
   router.post('/api/v1/video/batch-status', async (ctx) => {
-    const { ids } = ctx.params;
+    const ids = ctx.request.body?.ids;
     if (!ids || !Array.isArray(ids)) {
       ctx.body = { code: 400, success: false, msg: '需要ids数组' };
       return;
@@ -683,99 +677,93 @@ module.exports = function (router) {
 
   // ========== Download selected result files as ZIP (public - no auth header) ==========
   router.get('/api/v1/video/download/:id', async (ctx) => {
-    const AnalysisModel = ctx.model('analysis');
-    // Public route: auth middleware is skipped, query by _id only
-    const record = await AnalysisModel.getRow({ _id: ctx.params.id });
-    if (!record) {
-      ctx.body = { code: 404, success: false, msg: '记录不存在' };
+    let archiver;
+    try {
+      archiver = require('archiver');
+    } catch (e) {
+      console.error('archiver module not available:', e.message);
+      ctx.body = { code: 500, success: false, msg: '服务器缺少 archiver 模块，请联系管理员' };
       return;
     }
-
-    if (record.status !== 'completed') {
-      ctx.body = { code: 400, success: false, msg: '分析尚未完成，无法下载' };
-      return;
-    }
-
-    const resultDir = record.resultDir;
-    if (!fs.existsSync(resultDir)) {
-      ctx.body = { code: 404, success: false, msg: '结果目录不存在' };
-      return;
-    }
-
-    const videoFileBase = path.basename(record.videoPath, path.extname(record.videoPath));
-    const videoPath = path.join(resultDir, `detect_${videoFileBase}.mp4`);
-    const heatmapDir = path.join(resultDir, 'position_visualizations', 'heatmaps');
-    const scatterDir = path.join(resultDir, 'position_visualizations', 'scatter_plots');
-
-    const os = require('os');
-    const tmpDir = path.join(os.tmpdir(), `badminton_dl_${Date.now()}`);
-    const videoOutputName = `detect_${videoFileBase}.mp4`;
-    const zipName = `${videoOutputName.replace('.mp4', '')}.zip`;
-    const zipPath = path.join(os.tmpdir(), zipName);
 
     try {
-      const videoSubDir = path.join(tmpDir, '分析视频');
-      const heatmapSubDir = path.join(tmpDir, '热力图');
-      const scatterSubDir = path.join(tmpDir, '散点图');
-
-      fs.mkdirSync(videoSubDir, { recursive: true });
-      fs.mkdirSync(heatmapSubDir, { recursive: true });
-      fs.mkdirSync(scatterSubDir, { recursive: true });
-
-      if (fs.existsSync(videoPath)) {
-        fs.copyFileSync(videoPath, path.join(videoSubDir, path.basename(videoPath)));
+      const AnalysisModel = ctx.model('analysis');
+      const record = await AnalysisModel.getRow({ _id: ctx.params.id });
+      if (!record) {
+        ctx.body = { code: 404, success: false, msg: '记录不存在' };
+        return;
       }
 
-      if (fs.existsSync(heatmapDir)) {
-        fs.readdirSync(heatmapDir)
-          .filter(f => f.endsWith('.png') || f.endsWith('.jpg'))
-          .forEach(f => {
-            fs.copyFileSync(path.join(heatmapDir, f), path.join(heatmapSubDir, f));
-          });
+      if (record.status !== 'completed') {
+        ctx.body = { code: 400, success: false, msg: '分析尚未完成，无法下载' };
+        return;
       }
 
-      if (fs.existsSync(scatterDir)) {
-        fs.readdirSync(scatterDir)
-          .filter(f => f.endsWith('.png') || f.endsWith('.jpg'))
-          .forEach(f => {
-            fs.copyFileSync(path.join(scatterDir, f), path.join(scatterSubDir, f));
-          });
+      const resultDir = record.resultDir;
+      if (!fs.existsSync(resultDir)) {
+        ctx.body = { code: 404, success: false, msg: '结果目录不存在' };
+        return;
       }
 
-      if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+      const videoFileBase = path.basename(record.videoPath, path.extname(record.videoPath));
+      const videoPath = path.join(resultDir, `detect_${videoFileBase}.mp4`);
+      const heatmapDir = path.join(resultDir, 'position_visualizations', 'heatmaps');
+      const scatterDir = path.join(resultDir, 'position_visualizations', 'scatter_plots');
+
+      const zipName = `detect_${videoFileBase}.zip`;
+
+      // Collect archive into a Buffer for reliable delivery
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      const chunks = [];
 
       await new Promise((resolve, reject) => {
-        const zip = spawn('zip', ['-r', zipPath, '.'], {
-          cwd: tmpDir,
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
-        zip.on('close', (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(`zip exited with code ${code}`));
-        });
-        zip.on('error', reject);
+        archive.on('data', chunk => chunks.push(chunk));
+        archive.on('end', resolve);
+        archive.on('error', reject);
+
+        // Add video file
+        if (fs.existsSync(videoPath)) {
+          archive.file(videoPath, { name: '分析视频/' + path.basename(videoPath) });
+        }
+
+        // Add heatmap images
+        if (fs.existsSync(heatmapDir)) {
+          fs.readdirSync(heatmapDir)
+            .filter(f => f.endsWith('.png') || f.endsWith('.jpg'))
+            .forEach(f => {
+              archive.file(path.join(heatmapDir, f), { name: '热力图/' + f });
+            });
+        }
+
+        // Add scatter plot images
+        if (fs.existsSync(scatterDir)) {
+          fs.readdirSync(scatterDir)
+            .filter(f => f.endsWith('.png') || f.endsWith('.jpg'))
+            .forEach(f => {
+              archive.file(path.join(scatterDir, f), { name: '散点图/' + f });
+            });
+        }
+
+        archive.finalize();
       });
 
+      const zipBuffer = Buffer.concat(chunks);
       ctx.set('Content-Type', 'application/zip');
-      ctx.set('Content-Disposition', `attachment; filename="${encodeURIComponent(zipName)}"`);
-      ctx.set('Content-Length', fs.statSync(zipPath).size.toString());
-      ctx.body = fs.createReadStream(zipPath);
-
-      ctx.res.on('finish', () => {
-        try { fs.rmSync(tmpDir, { recursive: true }); } catch (e) { }
-        try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch (e) { }
-      });
+      ctx.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`);
+      ctx.set('Content-Length', zipBuffer.length.toString());
+      ctx.body = zipBuffer;
     } catch (e) {
-      console.error('ZIP creation error:', e);
-      try { fs.rmSync(tmpDir, { recursive: true }); } catch (e) { }
-      try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch (e) { }
-      ctx.body = { code: 500, success: false, msg: '打包下载失败: ' + e.message };
+      console.error('Download ZIP error:', e);
+      if (!ctx.res.headersSent) {
+        ctx.status = 500;
+        ctx.body = { code: 500, success: false, msg: '打包下载失败: ' + e.message };
+      }
     }
   });
 
   // ========== Delete an analysis ==========
   router.post('/api/v1/video/delete', async (ctx) => {
-    const { id } = ctx.params;
+    const id = ctx.request.body?.id;
     if (!id) {
       ctx.body = { code: 400, success: false, msg: '缺少记录ID' };
       return;

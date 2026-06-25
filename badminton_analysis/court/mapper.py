@@ -248,12 +248,26 @@ def annotate_court(image, auto_preview_path=None):
     return original_corners, original_roi_corners, original_mid_height
 
 
+def _imread_unicode(path, flags=None):
+    """cv2.imread that handles non-ASCII paths on Windows (e.g. Chinese characters)."""
+    import cv2
+    import numpy as np
+    if flags is None:
+        flags = cv2.IMREAD_COLOR
+    try:
+        with open(path, 'rb') as f:
+            data = np.frombuffer(f.read(), dtype=np.uint8)
+        return cv2.imdecode(data, flags)
+    except Exception:
+        return None
+
+
 if __name__ == "__main__":
     image_path = r'images/Weixin Screenshot_00001.png'
     corners = [(426, 385), (861, 382), (996, 667), (288, 668)]
     court_mapper = CourtMapper(corners)
     centroids = [(1400, 1000), (700, 600), (800, 980)]
-    image = cv2.imread(image_path)
+    image = _imread_unicode(image_path)
     image, mid = court_mapper.draw_court_overlay(image)
     cv2.imshow("image", image)
     cv2.waitKey()

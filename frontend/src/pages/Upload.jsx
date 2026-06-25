@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadVideo, batchUpload } from '../api.js';
-import { Play, Users, User, UploadCloud, Loader2, History, Sparkles, Zap, MousePointer2, X, FileVideo, Cpu } from 'lucide-react';
+import { uploadVideo, batchUpload, healthCheck } from '../api.js';
+import { Play, Users, User, UploadCloud, Loader2, History, Sparkles, Zap, MousePointer2, X, FileVideo, Cpu, Monitor } from 'lucide-react';
 import UserMenu from '../components/UserMenu.jsx';
 
 export default function Upload() {
@@ -12,6 +12,19 @@ export default function Upload() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [gpuInfo, setGpuInfo] = useState({ cuda_available: false, mps_available: false, recommended_device: 'cpu' });
+
+  // Fetch GPU capability on mount
+  useEffect(() => {
+    healthCheck().then(res => {
+      if (res?.data?.gpu) {
+        setGpuInfo(res.data.gpu);
+        if (res.data.gpu.recommended_device && res.data.gpu.recommended_device !== 'cpu') {
+          setDevice(res.data.gpu.recommended_device);
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -142,11 +155,11 @@ export default function Upload() {
             </button>
           </div>
 
-          {/* Device selector — CPU / MPS (Apple GPU) */}
+          {/* Device selector — CPU / MPS (Apple GPU) / CUDA (NVIDIA GPU) */}
           <div className="flex gap-4 justify-center">
             <button
               onClick={() => setDevice('cpu')}
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl border-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl border-2 transition-all cursor-pointer ${
                 device === 'cpu'
                   ? 'bg-[#3b82f6]/20 border-[#3b82f6] text-[#60a5fa] shadow-lg shadow-[#3b82f6]/20'
                   : 'bg-[#1e293b] border-[#334155] text-[#94a3b8] hover:border-[#475569]'
@@ -156,20 +169,50 @@ export default function Upload() {
               <span className="font-semibold">CPU</span>
             </button>
             <button
+              onClick={() => setDevice('cuda')}
+              disabled={!gpuInfo.cuda_available}
+              title={!gpuInfo.cuda_available ? '当前环境不支持 NVIDIA GPU' : ''}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl border-2 transition-all ${
+                device === 'cuda'
+                  ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-[#a78bfa] shadow-lg shadow-[#8b5cf6]/20 cursor-pointer'
+                  : device === 'mps'
+                    ? 'bg-[#1e293b] border-[#334155] text-[#64748b] cursor-not-allowed opacity-50'
+                    : gpuInfo.cuda_available
+                      ? 'bg-[#1e293b] border-[#334155] text-[#94a3b8] hover:border-[#475569] cursor-pointer'
+                      : 'bg-[#1e293b] border-[#334155] text-[#64748b] cursor-not-allowed opacity-40'
+              }`}
+            >
+              <Monitor className="w-5 h-5" />
+              <span className="font-semibold">NVIDIA GPU</span>
+              {!gpuInfo.cuda_available && <span className="text-[10px] text-[#64748b] ml-0.5">(不可用)</span>}
+            </button>
+            <button
               onClick={() => setDevice('mps')}
-              className={`flex items-center gap-2 px-6 py-3 rounded-xl border-2 transition-all cursor-pointer ${
+              disabled={!gpuInfo.mps_available}
+              title={!gpuInfo.mps_available ? '当前环境不支持 Apple GPU' : ''}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl border-2 transition-all ${
                 device === 'mps'
-                  ? 'bg-[#f59e0b]/20 border-[#f59e0b] text-[#fbbf24] shadow-lg shadow-[#f59e0b]/20'
-                  : 'bg-[#1e293b] border-[#334155] text-[#94a3b8] hover:border-[#475569]'
+                  ? 'bg-[#f59e0b]/20 border-[#f59e0b] text-[#fbbf24] shadow-lg shadow-[#f59e0b]/20 cursor-pointer'
+                  : device === 'cuda'
+                    ? 'bg-[#1e293b] border-[#334155] text-[#64748b] cursor-not-allowed opacity-50'
+                    : gpuInfo.mps_available
+                      ? 'bg-[#1e293b] border-[#334155] text-[#94a3b8] hover:border-[#475569] cursor-pointer'
+                      : 'bg-[#1e293b] border-[#334155] text-[#64748b] cursor-not-allowed opacity-40'
               }`}
             >
               <Zap className="w-5 h-5" />
               <span className="font-semibold">MPS GPU</span>
+              {!gpuInfo.mps_available && <span className="text-[10px] text-[#64748b] ml-0.5">(不可用)</span>}
             </button>
           </div>
+          {device === 'cuda' && (
+            <p className="text-center text-[#a78bfa] text-xs -mt-4">
+              NVIDIA CUDA 加速：YOLO + ONNX Runtime 均使用 GPU，需安装 CUDA 12.x + cuDNN 9.x
+            </p>
+          )}
           {device === 'mps' && (
             <p className="text-center text-[#fbbf24] text-xs -mt-4">
-              YOLO 模型使用 Apple GPU 加速，姿态估计仍用 CPU（ONNX 限制）
+              Apple GPU 加速：YOLO 模型使用 MPS，姿态估计仍用 CPU（ONNX 限制）
             </p>
           )}
 

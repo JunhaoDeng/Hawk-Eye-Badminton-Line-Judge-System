@@ -20,6 +20,8 @@ class YOLOPoseProcessor:
             self.device = selected
         elif device == 'mps':
             self.device = 'mps'
+        elif device == 'cuda':
+            self.device = 0  # CUDA GPU (YOLO uses integer device ID)
         else:
             self.device = device
 

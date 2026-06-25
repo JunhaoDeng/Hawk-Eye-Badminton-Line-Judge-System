@@ -33,9 +33,16 @@ class RTMPoseProcessor:
         else:
             self.device = device
         self.backend = backend
-        # ONNX Runtime (rtmlib) 暂不支持 MPS/CoreML，MPS 模式下姿态估计仍用 CPU
-        # YOLO 模型（pose/shuttlecock）会直接使用 MPS，获得主要加速
-        self._onnx_device = 'cpu' if self.device == 'mps' else self.device
+        # ONNX Runtime device mapping:
+        # - MPS: not supported by rtmlib, fallback to CPU
+        # - CUDA: onnxruntime-gpu uses CUDAExecutionProvider
+        # - CPU: default
+        if self.device == 'mps':
+            self._onnx_device = 'cpu'  # rtmlib 不支持 MPS
+        elif self.device == 'cuda':
+            self._onnx_device = 'cuda'  # onnxruntime-gpu 支持 CUDAExecutionProvider
+        else:
+            self._onnx_device = 'cpu'
         
         # Initialize RTMPose model
         self.init_rtmpose(mode)
@@ -89,6 +96,8 @@ class RTMPoseProcessor:
             if self.device == 'mps':
                 print(f"[INFO] MPS mode selected. RTMPose (ONNX Runtime) will run on CPU (rtmlib limitation), "
                       "YOLO models will use MPS GPU for main acceleration.")
+            elif self.device == 'cuda':
+                print(f"[INFO] CUDA mode selected. Both RTMPose (ONNX Runtime) and YOLO models will use NVIDIA GPU.")
             print(f"Initializing pose model (family: {self.pose_family}, mode: {mode}, backend: {self.backend}, device: {self.device}, onnx_device: {self._onnx_device})")
             if self.pose_family == 'rtmo':
                 self.wholebody = self.create_rtmo_model(mode)

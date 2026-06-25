@@ -19,7 +19,7 @@ const schema = {
   errorMessage: { type: String, default: '' },
   create_at: { type: Date, default: Date.now },
   update_at: { type: Date, default: Date.now },
-  device: { type: String, enum: ['cpu', 'mps'], default: 'cpu' }
+  device: { type: String, enum: ['cpu', 'mps', 'cuda'], default: 'cpu' }
 };
 
 module.exports = model(schema, 'analyses');

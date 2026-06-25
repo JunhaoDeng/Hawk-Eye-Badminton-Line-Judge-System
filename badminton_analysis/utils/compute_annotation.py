@@ -20,6 +20,21 @@ import sys
 import os
 
 
+def _imread_unicode(path, flags=1):
+    """cv2.imread that handles non-ASCII paths on Windows (e.g. Chinese characters)."""
+    import cv2
+    try:
+        import numpy as np
+        f = open(path, 'rb')
+        try:
+            data = np.frombuffer(f.read(), dtype=np.uint8)
+        finally:
+            f.close()
+        return cv2.imdecode(data, flags)
+    except Exception:
+        return None
+
+
 def compute_annotation(corners_json: str, image_shape_json: str, output_dir: str) -> dict:
     try:
         import cv2
@@ -96,8 +111,7 @@ def main():
     image_shape_json = args.image_shape_json
     if args.template_path:
         try:
-            import cv2
-            tmpl = cv2.imread(args.template_path)
+            tmpl = _imread_unicode(args.template_path)
             if tmpl is not None:
                 h, w = tmpl.shape[:2]
                 image_shape_json = json.dumps([h, w])
@@ -114,8 +128,7 @@ def main():
     if args.video_path and args.template_path:
         video_dims = get_video_dimensions(args.video_path)
         if video_dims:
-            import cv2
-            tmpl = cv2.imread(args.template_path)
+            tmpl = _imread_unicode(args.template_path)
             if tmpl is not None:
                 tpl_h, tpl_w = tmpl.shape[:2]
                 video_w, video_h = video_dims

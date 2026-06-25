@@ -20,8 +20,9 @@ Video preview: `assets/demo.mp4`.
 
 ## 🆕 Changelog
 
+- **2026-06-24**: Added NVIDIA CUDA GPU acceleration (full YOLO + ONNX Runtime GPU); frontend device selector now includes CUDA (mutually exclusive with MPS); added `requirements-cuda.txt` and GPU detection scripts. Fixed visualization Y-axis direction (upper/lower court player swap). Optimized Web annotation flow (default manual, auto-detect as preview only). Fixed Windows MSMF backend producing FMP4-encoded videos unplayable in browsers (introduced `imageio-ffmpeg` to auto-transcode to H.264; browser-compatible output even without system FFmpeg).
+- **2026-06-23**: Added Web management platform (React + Koa + MongoDB) with user auth, video upload, batch analysis, history, and online result preview/download. Added MPS (Apple Silicon GPU) acceleration option.
 - **2026-06-20**: Initial open-source release.
-- **2026-06-17**: Project documentation cleanup.
 - **Current version**: Supports player pose detection, shuttlecock detection, court coordinate mapping, trajectory statistics, heatmaps, scatter plots, and annotated video output.
 - **Experimental features**: Hit-point analysis and stroke statistics are still under active iteration and are mainly intended for research and secondary development.
 
@@ -58,7 +59,7 @@ Video preview: `assets/demo.mp4`.
 ## 📋 Requirements
 
 - Python 3.8+
-- FFmpeg available in system `PATH`
+- FFmpeg recommended in system `PATH`（optional: `pip install imageio-ffmpeg` provides auto-fallback）
 - OpenCV / PyTorch / Ultralytics / RTMLib / ONNX Runtime
 - NVIDIA GPU is recommended. CPU execution works, but video analysis will be much slower.
 - Shuttlecock YOLO weight `weights/yolo11s-ball.pt`, downloaded from the project GitHub Release.

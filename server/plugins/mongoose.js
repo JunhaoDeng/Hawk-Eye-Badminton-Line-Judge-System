@@ -1,5 +1,6 @@
 let glob = require("glob");
 let util = require('util');
+let path = require('path');
 let mongoose = require('mongoose');
 
 let middleware = module.exports = options => {
@@ -10,14 +11,24 @@ let middleware = module.exports = options => {
     mongoose.Promise = global.Promise;
     middleware.db = mongoose.connect(options.host);
 
-    let schemas = options.schemas + (options.schemas.lastIndexOf('/') === (options.schemas.length - 1) ? '' : '/');
-    let files = glob.sync(schemas + '/**/*.js');
+    let schemas = path.normalize(options.schemas);
+    // Ensure trailing separator for glob
+    if (!schemas.endsWith(path.sep)) {
+      schemas += path.sep;
+    }
+    // Use forward-slash pattern for glob (cross-platform safe)
+    let globPattern = schemas.replace(/\\/g, '/') + '**/*.js';
+    let files = glob.sync(globPattern);
     files.map(file => {
       // Skip base/model.js — it's a factory, not a schema
-      if (file.includes('base/model.js')) return;
-      let path = require('path');
+      // Use path.normalize to handle both forward and backslash separators on Windows
+      if (path.normalize(file).includes(path.join('base', 'model.js'))) return;
+      // glob on Windows may return relative backslash paths (e.g. "models\\user.js").
+      // Node.js require() needs either an absolute path or "./" prefixed relative path.
+      // Use path.resolve() to convert to an absolute path that works on all platforms.
+      let absolutePath = path.resolve(file);
       let modelName = path.basename(file, '.js').toLowerCase();
-      let schemaDef = require(file);
+      let schemaDef = require(absolutePath);
       middleware.models[modelName] = mongoose.model(modelName, schemaDef);
     });
   }

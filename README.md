@@ -22,7 +22,7 @@
 
 ## 🆕 更新日志
 
-- **2026-06-24**：修复可视化 Y 轴方向（上半场/下半场球员不再标反）；优化 Web 端标注流程（默认手动标注，自动检测仅预览）；修复快速标注坐标缩放问题。
+- **2026-06-24**：新增 NVIDIA CUDA GPU 推理加速支持（YOLO + ONNX Runtime 全面 GPU 加速）；前端设备选择器新增 CUDA 按钮，与 MPS 互斥；新增 `requirements-cuda.txt` 和 GPU 检测脚本。修复可视化 Y 轴方向（上半场/下半场球员不再标反）；优化 Web 端标注流程（默认手动标注，自动检测仅预览）；修复快速标注坐标缩放问题；修复 Windows MSMF 后端输出 FMP4 编码导致浏览器无法播放视频的问题（引入 `imageio-ffmpeg` 自动转码为 H.264，系统 FFmpeg 缺失时仍可正常输出浏览器兼容视频）。
 - **2026-06-23**：新增 Web 管理界面（React + Koa + MongoDB），支持用户注册/登录、视频上传、批量分析、历史记录管理、分析结果在线预览与下载。新增 MPS（Apple Silicon GPU）推理加速选项。
 - **2026-06-20**：正式开源。
 - **当前版本**：球员姿态检测、羽毛球检测追踪、球场坐标映射、回合自动检测、运动统计、热力图/散点图、带标注视频输出。
@@ -69,7 +69,7 @@
 | Python | 3.8+ |
 | Node.js | 18+（Web 管理平台需要） |
 | MongoDB | 4.0+（Web 管理平台需要） |
-| FFmpeg | 已加入系统 PATH |
+| FFmpeg | 推荐安装并加入系统 PATH（可选：`pip install imageio-ffmpeg` 提供自动回退） |
 | GPU（可选） | NVIDIA CUDA 12.x / Apple Silicon MPS |
 
 ---
@@ -197,7 +197,7 @@ npx vite --host 0.0.0.0 --port 3000
 | 步骤 | 页面 | 说明 |
 |------|------|------|
 | 注册/登录 | `/login` | 邮箱 + 密码注册，JWT 30 天有效 |
-| 上传视频 | `/upload` | 支持拖拽上传、选择单打/双打模式、CPU/MPS GPU 切换 |
+| 上传视频 | `/upload` | 支持拖拽上传、选择单打/双打模式、CPU/MPS NVIDIA GPU 切换 |
 | 球场标注 | `/annotate/:id` | 默认手动标注四角点；可点击"自动检测角点"生成预览，确认后微调再提交 |
 | 启动分析 | `/analysis/:id` | 一键触发分析，实时轮询进度，完成后可跳转结果页 |
 | 查看结果 | `/results/:id` | 在线播放标注视频，浏览热力图/散点图，下载 JSONL 数据 |
@@ -224,7 +224,7 @@ python main.py --video-path videos/demo.mp4
 --yolo-pose-model            YOLO Pose 模型路径，默认 yolo11n-pose.pt
 --template-path              球场模板图路径（不传则弹出文件选择框）
 --mode                       比赛模式：singles（单打，默认）/ doubles（双打）
---device                     推理设备：cpu（默认）/ mps（Apple Silicon GPU）
+--device                     推理设备：cpu（默认）/ mps（Apple Silicon GPU）/ cuda（NVIDIA GPU）
 --language                   界面语言：zh（中文，默认）/ en（英文）
 
 --pose-roi true|false                显示姿态检测 ROI 框（默认 true）
@@ -267,13 +267,44 @@ python main.py --video-path videos/demo.mp4 --device mps
 
 MPS 模式下 YOLO 模型（羽毛球检测 + YOLO-Pose）使用 Apple GPU 加速，RTMPose/RTMO（ONNX Runtime）因 rtmlib 限制仍用 CPU，但已获得主要加速。
 
-#### NVIDIA GPU — CUDA
+#### NVIDIA GPU — CUDA（Windows / Linux）
 
+**前置要求**：
+- 已安装 NVIDIA 显卡驱动，`nvidia-smi` 可以正常输出显卡信息
+- 推荐使用 CUDA 12.1 对应的 PyTorch wheel
+
+**安装步骤**：
 ```bash
-# 安装 GPU 版依赖
+# 1. 卸载 CPU 版依赖
 pip uninstall -y torch torchvision onnxruntime onnxruntime-gpu
+
+# 2. 安装 CUDA 版 PyTorch
 pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 --index-url https://download.pytorch.org/whl/cu121
-pip install onnxruntime-gpu==1.20.1
+
+# 3. 安装其余依赖（含 onnxruntime-gpu）
+pip install -r requirements-cuda.txt
+```
+
+**验证 GPU 是否生效**：
+```bash
+python -c "import torch; print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('gpu:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available')"
+python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
+```
+
+期望看到：
+```text
+cuda: True
+CUDAExecutionProvider
+```
+
+**注意事项**：
+- 安装 GPU 版 ONNX Runtime 后，`pip check` 可能提示 `rtmlib requires onnxruntime, which is not installed`。只要 provider 验证能看到 `CUDAExecutionProvider`，就不要再安装 CPU 版 `onnxruntime`，否则会覆盖 GPU 包。
+- CUDA 模式下所有推理模块（YOLO 羽毛球检测、YOLO Pose、RTMPose/RTMO ONNX）均使用 GPU，是全面加速模式。
+- Web 管理平台会自动检测 GPU 类型，NVIDIA 和 Apple GPU 按钮互斥，不可同时选择。
+
+**切回 CPU 版**：
+```bash
+pip install --force-reinstall -r requirements.txt
 ```
 
 ### 球场标注说明
@@ -341,7 +372,9 @@ weights/
 ```
 Good-Badminton/
 ├── main.py                          # CLI 入口（argparse 参数解析）
-├── requirements.txt                 # Python 依赖
+├── requirements.txt                 # Python 依赖（通用 / CPU）
+├── requirements-cuda.txt            # NVIDIA CUDA GPU 依赖
+├── requirements-intel-cpu.txt       # Intel CPU 优化版依赖
 ├── badminton_analysis/              # Python 核心分析包
 │   ├── __init__.py                  # 包标识，__version__ = "0.1.0"
 │   ├── system.py                    # 主流程编排（逐帧处理、回合检测状态机）

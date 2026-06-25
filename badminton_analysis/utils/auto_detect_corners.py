@@ -29,6 +29,32 @@ if _project_root not in sys.path:
 MAX_SCORE_REFERENCE = 250.0  # approximate ceiling for _score_court_quad
 
 
+def _imread_unicode(path, flags=1):
+    """cv2.imread that handles non-ASCII paths on Windows (e.g. Chinese characters)."""
+    import cv2
+    import numpy as np
+    try:
+        f = open(path, 'rb')
+        try:
+            data = np.frombuffer(f.read(), dtype=np.uint8)
+        finally:
+            f.close()
+        return cv2.imdecode(data, flags)
+    except Exception:
+        return None
+
+
+def _imwrite_unicode(path, img, ext='.png'):
+    """cv2.imwrite that handles non-ASCII paths on Windows."""
+    import cv2
+    success, encoded = cv2.imencode(ext, img)
+    if success:
+        with open(path, 'wb') as f:
+            f.write(encoded.tobytes())
+        return True
+    return False
+
+
 def get_video_dimensions(video_path):
     """Return (width, height) of the video, or None if unreadable."""
     import cv2
@@ -63,7 +89,7 @@ def main():
         return
 
     # --- Load image ---
-    image = cv2.imread(args.image_path)
+    image = _imread_unicode(args.image_path)
     if image is None:
         result = {"success": False, "corners": None, "confidence": 0, "strategy": "none",
                   "error": f"Cannot read image: {args.image_path}"}
@@ -95,7 +121,7 @@ def main():
         # Save debug preview on failure
         preview = render_auto_court_preview(resized, None, None, debug)
         preview_path = os.path.join(args.output_dir, 'auto_court_preview.png')
-        cv2.imwrite(preview_path, preview)
+        _imwrite_unicode(preview_path, preview)
 
         result = {"success": False, "corners": None, "confidence": 0, "strategy": "none",
                   "error": "No reliable court boundary found"}
@@ -124,7 +150,7 @@ def main():
     roi = compute_expanded_roi(corners_resized, resized.shape)
     preview = render_auto_court_preview(resized, corners_resized, roi, debug)
     preview_path = os.path.join(args.output_dir, 'auto_court_preview.png')
-    cv2.imwrite(preview_path, preview)
+    _imwrite_unicode(preview_path, preview)
 
     result = {
         "success": True,

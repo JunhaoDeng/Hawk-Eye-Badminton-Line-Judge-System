@@ -38,8 +38,15 @@ def extract_frame(video_path: str, output_path: str, timestamp: float = 2.0) -> 
         return {"success": False, "error": f"Cannot read frame at {timestamp}s"}
 
     import os
+    import numpy as np
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-    cv2.imwrite(output_path, frame)
+    # Use imencode + file write to handle non-ASCII paths on Windows
+    success, encoded = cv2.imencode('.png', frame)
+    if success:
+        with open(output_path, 'wb') as f:
+            f.write(encoded.tobytes())
+    else:
+        cv2.imwrite(output_path, frame)
 
     height, width = frame.shape[:2]
     return {"success": True, "frame_path": output_path, "width": width, "height": height}
