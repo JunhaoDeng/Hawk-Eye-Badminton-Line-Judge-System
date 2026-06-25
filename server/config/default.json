@@ -16,5 +16,5 @@
   },
   "pythonPath": ".venv/Scripts/python.exe",
   "projectRoot": "..",
-  "maxConcurrent": 2
+  "maxConcurrent": 0
 }

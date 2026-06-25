@@ -542,9 +542,9 @@ module.exports = function (router) {
       '--device', record.device || 'cpu',
     ];
 
-    // Configure process pool
+    // Configure process pool (0 means no limit)
     const maxConcurrent = global.config.has('maxConcurrent') ? global.config.get('maxConcurrent') : 2;
-    processPool.maxConcurrent = maxConcurrent;
+    processPool.maxConcurrent = maxConcurrent || Infinity;
     processPool.configure(pythonPath, projectRoot);
 
     const spawnResult = processPool.spawnAnalysis(record._id, {
@@ -751,9 +751,14 @@ module.exports = function (router) {
         archive.on('end', resolve);
         archive.on('error', reject);
 
-        // Add video file
+        // Add analyzed video file
         if (fs.existsSync(videoPath)) {
           archive.file(videoPath, { name: '分析视频/' + path.basename(videoPath) });
+        }
+
+        // Add original video file
+        if (fs.existsSync(record.videoPath)) {
+          archive.file(record.videoPath, { name: '原始视频/' + path.basename(record.videoPath) });
         }
 
         // Add heatmap images
@@ -982,8 +987,9 @@ async function triggerAnalysis(record, pythonPath, projectRoot, AnalysisModel) {
     '--device', record.device || 'cpu',
   ];
 
+  // 0 means no limit — let the system run as many as it can
   const maxConcurrent = global.config.has('maxConcurrent') ? global.config.get('maxConcurrent') : 2;
-  processPool.maxConcurrent = maxConcurrent;
+  processPool.maxConcurrent = maxConcurrent || Infinity;
   processPool.configure(pythonPath, projectRoot);
 
   const spawnResult = processPool.spawnAnalysis(record._id, {
