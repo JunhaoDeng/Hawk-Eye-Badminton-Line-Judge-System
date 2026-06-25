@@ -110,10 +110,13 @@ python main.py --video-path videos/demo.mp4
   ```
 - **Python 虚拟环境** 已创建并安装依赖（参考上方"方式一"）
 
-#### 步骤一：配置并启动后端服务（端口 9000）
+#### 步骤一：配置
 
 ```bash
 cd server
+npm install
+
+cd ../frontend
 npm install
 ```
 
@@ -140,38 +143,53 @@ npm install
 | `projectRoot` | 项目根目录相对于 server 的路径 | `..` |
 | `maxConcurrent` | 最大并发分析任务数（默认 `default.json`） | `2` |
 
-启动后端：
+#### 步骤二：启动服务
+
+**手动启动**：
 
 ```bash
-# macOS / Linux
+# 后端（端口 9000）
+cd server
 NODE_ENV=dev node index.js
 
-# Windows (PowerShell)
-$env:NODE_ENV="dev"; node index.js
+# 前端（端口 3000），另开终端
+cd frontend
+npx vite --host 0.0.0.0 --port 3000
+```
 
-# Windows (CMD)
-set NODE_ENV=dev && node index.js
+**PM2 一键启动（推荐）**：
+
+项目已包含 `ecosystem.config.js`，可使用 PM2 同时管理前后端：
+
+```bash
+# 安装 PM2（如已安装可跳过）
+npm install -g pm2
+
+# 一键启动前后端
+pm2 start ecosystem.config.js
+
+# 查看日志
+pm2 logs
+
+# 其他常用命令
+pm2 status          # 查看进程状态
+pm2 restart all     # 重启所有服务
+pm2 stop all        # 停止所有服务
+pm2 delete all      # 删除所有进程
+pm2 save            # 保存进程列表（配合 pm2 startup 实现开机自启）
 ```
 
 看到以下输出表示启动成功：
 ```
 Badminton Analysis Server running at http://localhost:9000
+VITE v5.x.x  ready in xxx ms
+  ➜  Local:   http://localhost:3000/
 ```
 
 验证后端是否正常：
 ```bash
 curl http://localhost:9000/api/v1/health
 # 返回 {"code":200,"success":true,"msg":"ok","data":{"status":"running"}}
-```
-
-#### 步骤二：启动前端开发服务器（端口 3000）
-
-打开新终端：
-
-```bash
-cd frontend
-npm install
-npx vite --host 0.0.0.0 --port 3000
 ```
 
 #### 步骤三：打开浏览器

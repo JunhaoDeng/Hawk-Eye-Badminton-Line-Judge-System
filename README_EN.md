@@ -55,13 +55,19 @@ Video preview: `assets/demo.mp4`.
 - **Position charts** - Automatically generates player position heatmaps and scatter plots.
 - **Chinese / English display** - Switch visualization text with `--language zh/en`.
 - **Local execution** - Videos, models, and analysis results stay on your local machine.
+- **Web management platform** - React + Koa + MongoDB stack with user auth, video upload, court annotation, analysis management, and online result preview.
+- **GPU acceleration** - Supports NVIDIA CUDA and Apple Silicon MPS (Metal Performance Shaders), with one-click switching on the frontend.
 
 ## 📋 Requirements
 
-- Python 3.8+
-- FFmpeg recommended in system `PATH`（optional: `pip install imageio-ffmpeg` provides auto-fallback）
-- OpenCV / PyTorch / Ultralytics / RTMLib / ONNX Runtime
-- NVIDIA GPU is recommended. CPU execution works, but video analysis will be much slower.
+| Component | Requirement |
+|-----------|-------------|
+| Python | 3.8+ |
+| Node.js | 18+ (required for Web management platform) |
+| MongoDB | 4.0+ (required for Web management platform) |
+| FFmpeg | Recommended in system `PATH` (optional: `pip install imageio-ffmpeg` provides auto-fallback) |
+| GPU (optional) | NVIDIA CUDA 12.x / Apple Silicon MPS |
+
 - Shuttlecock YOLO weight `weights/yolo11s-ball.pt`, downloaded from the project GitHub Release.
 
 ## 🚀 Installation
@@ -239,6 +245,119 @@ RTMPose / RTMO modes:
 --audio true|false                   Keep original video audio, default true
 --language {zh,en}                   Visualization language
 ```
+
+---
+
+## 🌐 Web Management Platform
+
+### Prerequisites
+
+- **MongoDB** installed and running (default: `mongodb://127.0.0.1:27017/badminton_analysis`)
+  ```bash
+  # macOS (Homebrew)
+  brew install mongodb-community
+  brew services start mongodb-community
+
+  # Verify
+  mongosh --eval "db.version()"
+  ```
+- **Python virtual environment** created with dependencies installed (see Installation above)
+
+### Step 1: Configure
+
+```bash
+cd server
+npm install
+
+cd ../frontend
+npm install
+```
+
+Edit `server/config/dev.json` (development) or `server/config/default.json` (production) to ensure paths are correct:
+
+```json
+{
+  "port": 9000,
+  "mongodb": {
+    "host": "mongodb://127.0.0.1:27017/badminton_analysis"
+  },
+  "pythonPath": ".venv/bin/python",
+  "projectRoot": ".."
+}
+```
+
+Key configuration fields:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `port` | Backend server port | `9000` |
+| `mongodb.host` | MongoDB connection URL | `mongodb://127.0.0.1:27017/badminton_analysis` |
+| `pythonPath` | Python interpreter path (relative to server dir or absolute) | `.venv/bin/python` or `/usr/bin/python3` |
+| `projectRoot` | Project root relative to server dir | `..` |
+| `maxConcurrent` | Max concurrent analysis tasks (default in `default.json`) | `2` |
+
+### Step 2: Start Services
+
+**Manual start**:
+
+```bash
+# Backend (port 9000)
+cd server
+NODE_ENV=dev node index.js
+
+# Frontend (port 3000), open a new terminal
+cd frontend
+npx vite --host 0.0.0.0 --port 3000
+```
+
+**PM2 one-command start (recommended)**:
+
+The project includes `ecosystem.config.js` for PM2 to manage both frontend and backend:
+
+```bash
+# Install PM2 (skip if already installed)
+npm install -g pm2
+
+# Start both frontend and backend
+pm2 start ecosystem.config.js
+
+# View logs
+pm2 logs
+
+# Other useful commands
+pm2 status          # Check process status
+pm2 restart all     # Restart all services
+pm2 stop all        # Stop all services
+pm2 delete all      # Remove all processes
+pm2 save            # Save process list (use with pm2 startup for auto-restart on reboot)
+```
+
+You should see:
+```
+Badminton Analysis Server running at http://localhost:9000
+VITE v5.x.x  ready in xxx ms
+  ➜  Local:   http://localhost:3000/
+```
+
+Verify the backend:
+```bash
+curl http://localhost:9000/api/v1/health
+# Returns {"code":200,"success":true,"msg":"ok","data":{"status":"running"}}
+```
+
+### Step 3: Open Browser
+
+Visit `http://localhost:3000` → Register → Login → Upload video → Annotate court → Start analysis → View results
+
+> **Backend startup FAQ:**
+> - Q: `connect ECONNREFUSED 127.0.0.1:27017`? → MongoDB is not running. Run `brew services start mongodb-community` first.
+> - Q: `spawn python ENOENT`? → The `pythonPath` in config is incorrect. Check `config/dev.json`.
+> - Q: Port 9000 occupied? → Change `port` in `config/dev.json` and update the proxy address in `frontend/vite.config.js`.
+> - Q: How to install MongoDB on Windows? → Download [MongoDB Community Server](https://www.mongodb.com/try/download/community) or use Docker.
+
+> **Note**: The frontend (port 3000) proxies API requests to the backend (port 9000) via Vite. Hot module replacement is active during development.
+
+---
 
 ## 📊 Outputs
 
