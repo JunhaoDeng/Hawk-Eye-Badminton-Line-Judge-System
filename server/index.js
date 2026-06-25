@@ -51,7 +51,15 @@ app.use(cors({ origin: '*', credentials: true }));
 // Mount results directory under /results path so URLs like /results/double/detect_double.mp4 work
 app.use(mount('/results', serve(publicDir)));
 app.use(mount('/screenshots', serve(screenshotsDir)));
-app.use(bodyParser());
+// bodyParser for JSON/x-www-form-urlencoded only; explicitly skip multipart
+// (enableTypes alone isn't reliable on Node v24+)
+app.use(async (ctx, next) => {
+  if (ctx.request.is('multipart/*')) {
+    await next();
+    return;
+  }
+  await bodyParser()(ctx, next);
+});
 
 app.use(async (ctx, next) => {
   ctx.params = { ...ctx.request.body, ...ctx.query };

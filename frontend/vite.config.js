@@ -9,7 +9,12 @@ export default defineConfig({
     port: 3000,
     allowedHosts: true,
     proxy: {
-      '/api': 'http://localhost:9000',
+      '/api': {
+        target: 'http://localhost:9000',
+        changeOrigin: true,
+        timeout: 300000,        // 5 min — large video file upload
+        proxyTimeout: 300000,
+      },
       '/screenshots': 'http://localhost:9000',
       '/results': 'http://localhost:9000',
     }
