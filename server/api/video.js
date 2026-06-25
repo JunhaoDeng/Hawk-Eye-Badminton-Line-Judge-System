@@ -745,42 +745,58 @@ module.exports = function (router) {
       // Collect archive into a Buffer for reliable delivery
       const archive = archiver('zip', { zlib: { level: 9 } });
       const chunks = [];
+      const warnings = [];
 
       await new Promise((resolve, reject) => {
         archive.on('data', chunk => chunks.push(chunk));
         archive.on('end', resolve);
         archive.on('error', reject);
+        // Capture warnings to diagnose silent file-skip issues
+        archive.on('warning', err => warnings.push(err.message || String(err)));
+
+        // Use a helper that reads file content explicitly to avoid archiver
+        // silent-skip bugs (especially on Windows with non-ASCII paths)
+        const addFileSafely = (filePath, zipName) => {
+          try {
+            if (!filePath || typeof filePath !== 'string') {
+              console.warn('[Download] Skipping file - path is not a string:', filePath); return;
+            }
+            if (!fs.existsSync(filePath)) {
+              console.warn('[Download] Skipping file - not found:', filePath); return;
+            }
+            const content = fs.readFileSync(filePath);
+            archive.append(content, { name: zipName });
+          } catch (e) {
+            console.error('[Download] Failed to add file to zip:', filePath, e.message);
+          }
+        };
 
         // Add analyzed video file
-        if (fs.existsSync(videoPath)) {
-          archive.file(videoPath, { name: '分析视频/' + path.basename(videoPath) });
-        }
+        addFileSafely(videoPath, '分析视频/' + path.basename(videoPath));
 
         // Add original video file
-        if (fs.existsSync(record.videoPath)) {
-          archive.file(record.videoPath, { name: '原始视频/' + path.basename(record.videoPath) });
-        }
+        addFileSafely(record.videoPath, '原始视频/' + path.basename(record.videoPath));
 
         // Add heatmap images
         if (fs.existsSync(heatmapDir)) {
           fs.readdirSync(heatmapDir)
             .filter(f => f.endsWith('.png') || f.endsWith('.jpg'))
-            .forEach(f => {
-              archive.file(path.join(heatmapDir, f), { name: '热力图/' + f });
-            });
+            .forEach(f => addFileSafely(path.join(heatmapDir, f), '热力图/' + f));
         }
 
         // Add scatter plot images
         if (fs.existsSync(scatterDir)) {
           fs.readdirSync(scatterDir)
             .filter(f => f.endsWith('.png') || f.endsWith('.jpg'))
-            .forEach(f => {
-              archive.file(path.join(scatterDir, f), { name: '散点图/' + f });
-            });
+            .forEach(f => addFileSafely(path.join(scatterDir, f), '散点图/' + f));
         }
 
         archive.finalize();
       });
+
+      if (warnings.length > 0) {
+        console.warn('[Download] archiver warnings:', warnings);
+      }
 
       const zipBuffer = Buffer.concat(chunks);
       ctx.set('Content-Type', 'application/zip');
