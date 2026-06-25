@@ -19,6 +19,8 @@ const schema = {
   errorMessage: { type: String, default: '' },
   create_at: { type: Date, default: Date.now },
   update_at: { type: Date, default: Date.now },
+  startedAt: { type: Date },
+  processingTime: { type: Number, default: 0 },
   device: { type: String, enum: ['cpu', 'mps', 'cuda'], default: 'cpu' }
 };
 

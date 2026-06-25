@@ -1,12 +1,39 @@
 const multer = require('@koa/multer');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { processPool } = require('../utils/processPool');
+const { getPythonPaths } = require('../utils/pythonResolver');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 const videosDir = path.join(projectRoot, 'videos');
 const screenshotsDir = path.join(projectRoot, 'screenshots');
+
+/** Cross-platform Python resolution: cached first-working path */
+let _resolvedPython = null;
+function resolvePython() {
+  if (_resolvedPython) return _resolvedPython;
+  const paths = getPythonPaths(global.config.get('pythonPath'));
+  for (const pyPath of paths) {
+    try {
+      // Use spawnSync with array args to avoid shell quoting issues
+      const result = spawnSync(pyPath, ['-c', 'print("ok")'], {
+        stdio: 'ignore',
+        timeout: 3000,
+        cwd: projectRoot
+      });
+      if (result.status === 0 && result.error === undefined) {
+        _resolvedPython = pyPath;
+        console.log('[video] Resolved Python:', pyPath);
+        return pyPath;
+      }
+    } catch (e) {
+      // try next
+    }
+  }
+  _resolvedPython = 'python';
+  return 'python';
+}
 
 [videosDir, screenshotsDir].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -52,7 +79,7 @@ module.exports = function (router) {
 
     const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     const videoPath = file.path;
-    const pythonPath = global.config.get('pythonPath') || 'python';
+    const pythonPath = resolvePython();
     const screenshotName = `${path.basename(videoPath, path.extname(videoPath))}_screenshot.png`;
     const screenshotPath = path.join(screenshotsDir, screenshotName);
 
@@ -147,7 +174,7 @@ module.exports = function (router) {
       return;
     }
 
-    const pythonPath = global.config.get('pythonPath') || 'python';
+    const pythonPath = resolvePython();
     const AnalysisModel = ctx.model('analysis');
     const records = [];
 
@@ -284,7 +311,7 @@ module.exports = function (router) {
       return;
     }
 
-    const pythonPath = global.config.get('pythonPath') || 'python';
+    const pythonPath = resolvePython();
     const videoName = record.videoName;
 
     const resultDir = path.join(projectRoot, 'results', videoName);
@@ -346,7 +373,7 @@ module.exports = function (router) {
     // We do NOT check screenshotPath here — the screenshot may be cleaned up
     // or generated on a different machine, and the detection doesn't need it.
 
-    const pythonPath = global.config.get('pythonPath') || 'python';
+    const pythonPath = resolvePython();
     const resultDir = path.join(projectRoot, 'results', record.videoName);
     fs.mkdirSync(resultDir, { recursive: true });
 
@@ -428,7 +455,7 @@ module.exports = function (router) {
       update_at: new Date()
     });
 
-    const pythonPath = global.config.get('pythonPath') || 'python';
+    const pythonPath = resolvePython();
     triggerAutoAnnotation(await AnalysisModel.getRow({ _id: record._id }), pythonPath, projectRoot, AnalysisModel);
 
     ctx.body = {
@@ -464,9 +491,10 @@ module.exports = function (router) {
     // Atomically transition from 'annotated' to 'running' using the status
     // field in the filter — this prevents race conditions where two concurrent
     // POST requests both pass the getRow check and both spawn a process.
+    const startedAt = new Date();
     const updateResult = await AnalysisModel.updateRow(
       { _id: record._id, status: 'annotated' },
-      { status: 'running', update_at: new Date() }
+      { status: 'running', startedAt, update_at: new Date() }
     );
 
     if (!updateResult || updateResult.modifiedCount === 0) {
@@ -479,8 +507,7 @@ module.exports = function (router) {
       return;
     }
 
-    const pythonPath = global.config.get('pythonPath') || 'python';
-
+    const pythonPath = resolvePython();
     // Find template image path based on game mode
     const originalTemplatePath = findTemplatePath(projectRoot, record.mode);
 
@@ -525,6 +552,7 @@ module.exports = function (router) {
       pythonPath,
       projectRoot,
       onComplete: async (code, stderrOutput) => {
+        const processingTime = Math.round((Date.now() - startedAt.getTime()) / 1000);
         if (code === 0) {
           const resultDir = record.resultDir;
           const videoFileBase = path.basename(record.videoPath, path.extname(record.videoPath));
@@ -540,12 +568,14 @@ module.exports = function (router) {
             outputVideoPath: outputVideo,
             heatmapPaths: heatmaps,
             scatterPaths: scatterPlots,
+            processingTime,
             update_at: new Date()
           });
         } else {
           await AnalysisModel.updateRow({ _id: record._id }, {
             status: 'failed',
             errorMessage: stderrOutput.slice(-500),
+            processingTime,
             update_at: new Date()
           });
         }
@@ -815,7 +845,9 @@ function runPythonScript(pythonPath, args, timeout = 30000) {
       if (code === 0) {
         resolve(stdout.trim());
       } else {
-        reject(new Error('Python script failed: ' + stderr.slice(-200)));
+        // Some scripts (like extract_frame.py) print error JSON to stdout, not stderr
+        const detail = stderr.trim() || stdout.trim() || '(no output)';
+        reject(new Error('Python script failed: ' + detail.slice(-300)));
       }
     });
 
@@ -907,9 +939,10 @@ async function triggerAnalysis(record, pythonPath, projectRoot, AnalysisModel) {
   // Atomically transition from 'annotated' to 'running' to prevent race
   // conditions with concurrent frontend API calls (e.g. Analysis.jsx
   // StrictMode double-effect)
+  const startedAt = new Date();
   const updateResult = await AnalysisModel.updateRow(
     { _id: record._id, status: 'annotated' },
-    { status: 'running', update_at: new Date() }
+    { status: 'running', startedAt, update_at: new Date() }
   );
 
   if (!updateResult || updateResult.modifiedCount === 0) {
@@ -958,6 +991,7 @@ async function triggerAnalysis(record, pythonPath, projectRoot, AnalysisModel) {
     pythonPath,
     projectRoot,
     onComplete: async (code, stderrOutput) => {
+      const processingTime = Math.round((Date.now() - startedAt.getTime()) / 1000);
       if (code === 0) {
         const resultDir = record.resultDir;
         const videoFileBase = path.basename(record.videoPath, path.extname(record.videoPath));
@@ -973,12 +1007,14 @@ async function triggerAnalysis(record, pythonPath, projectRoot, AnalysisModel) {
           outputVideoPath: outputVideo,
           heatmapPaths: heatmaps,
           scatterPaths: scatterPlots,
+          processingTime,
           update_at: new Date()
         });
       } else {
         await AnalysisModel.updateRow({ _id: record._id }, {
           status: 'failed',
           errorMessage: stderrOutput.slice(-500),
+          processingTime,
           update_at: new Date()
         });
       }

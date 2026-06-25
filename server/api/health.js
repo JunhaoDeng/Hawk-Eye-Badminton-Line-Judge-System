@@ -1,9 +1,9 @@
 const path = require('path');
 const { spawn } = require('child_process');
+const { getPythonPaths } = require('../utils/pythonResolver');
 
 module.exports = function (router) {
   router.get('/api/v1/health', async (ctx) => {
-    const pythonPath = global.config.get('pythonPath') || 'python';
     const projectRoot = global.config.has('projectRoot')
       ? path.resolve(global.config.get('projectRoot'))
       : path.resolve(__dirname, '..', '..');
@@ -11,12 +11,19 @@ module.exports = function (router) {
 
     let gpuInfo = { cuda_available: false, cuda_device_name: '', mps_available: false, recommended_device: 'cpu', onnx_cuda: false };
 
-    try {
-      const result = await runPythonScript(pythonPath, [scriptPath], 5000);
-      gpuInfo = JSON.parse(result);
-    } catch (e) {
-      // GPU 检测失败时使用默认值，不影响服务启动
-      console.warn('[Health] GPU detection failed:', e.message);
+    const pythonPaths = getPythonPaths(global.config.get('pythonPath'));
+    for (const pyPath of pythonPaths) {
+      try {
+        const result = await runPythonScript(pyPath, [scriptPath], 5000);
+        gpuInfo = JSON.parse(result);
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+
+    if (!gpuInfo.mps_available && !gpuInfo.cuda_available) {
+      console.warn('[Health] Could not run GPU detection via Python, using fallback defaults');
     }
 
     ctx.body = { code: 200, success: true, msg: 'ok', data: { status: 'running', gpu: gpuInfo } };

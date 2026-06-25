@@ -70,6 +70,16 @@ export default function History() {
     }
   };
 
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return '—';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
+
   const filtered = filterMode === 'all' ? list : list.filter(item => item.mode === filterMode);
   const totalPages = Math.ceil(total / 20);
 
@@ -129,6 +139,7 @@ export default function History() {
                     <th className="px-4 py-3 text-left text-[#94a3b8] text-xs font-semibold uppercase">模式</th>
                     <th className="px-4 py-3 text-left text-[#94a3b8] text-xs font-semibold uppercase">标注</th>
                     <th className="px-4 py-3 text-left text-[#94a3b8] text-xs font-semibold uppercase">状态</th>
+                    <th className="px-4 py-3 text-left text-[#94a3b8] text-xs font-semibold uppercase">处理时长</th>
                     <th className="px-4 py-3 text-left text-[#94a3b8] text-xs font-semibold uppercase">时间</th>
                     <th className="px-4 py-3 text-right text-[#94a3b8] text-xs font-semibold uppercase">操作</th>
                   </tr>
@@ -166,6 +177,12 @@ export default function History() {
                             {item.status === 'running' || item.status === 'auto_detecting' ? <Icon className="w-3 h-3 animate-spin" /> : <Icon className="w-3 h-3" />}
                             {st.label}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-[#94a3b8] text-xs">
+                          {item.status === 'running' || item.status === 'auto_detecting'
+                            ? <span className="inline-flex items-center gap-1 text-[#6366f1]"><Loader2 className="w-3 h-3 animate-spin" />计算中</span>
+                            : formatDuration(item.processingTime)
+                          }
                         </td>
                         <td className="px-4 py-3 text-[#94a3b8] text-xs">
                           {new Date(item.create_at).toLocaleString('zh-CN')}
