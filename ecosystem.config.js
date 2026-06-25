@@ -14,7 +14,7 @@ module.exports = {
     },
     {
       name: 'badminton-frontend',
-      script: path.join(__dirname, 'frontend/node_modules/.bin/vite'),
+      script: path.join(__dirname, 'frontend/node_modules/vite/bin/vite.js'),
       args: '--host 0.0.0.0 --port 3000',
       cwd: path.join(__dirname, 'frontend'),
       max_memory_restart: '1G',
