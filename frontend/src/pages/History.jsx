@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAnalysisList, deleteAnalysis } from '../api.js';
-import { Trash2, Eye, RefreshCw, Loader2, Clock, User, Users, CheckCircle2, XCircle, Loader as LoaderIcon, Sparkles, Zap, MousePointer2 } from 'lucide-react';
+import { Trash2, Eye, RefreshCw, Loader2, Clock, User, Users, CheckCircle2, XCircle, Loader as LoaderIcon, Sparkles, Zap, MousePointer2, Brain } from 'lucide-react';
 import UserMenu from '../components/UserMenu.jsx';
 
 const STATUS_MAP = {
@@ -166,10 +166,12 @@ export default function History() {
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${
                             annotationMode === 'auto'
                               ? 'bg-[#22c55e]/20 text-[#4ade80]'
-                              : 'bg-[#f59e0b]/20 text-[#fbbf24]'
+                              : annotationMode === 'llm'
+                                ? 'bg-[#8b5cf6]/20 text-[#a78bfa]'
+                                : 'bg-[#f59e0b]/20 text-[#fbbf24]'
                           }`}>
-                            {annotationMode === 'auto' ? <Zap className="w-3 h-3" /> : <MousePointer2 className="w-3 h-3" />}
-                            {annotationMode === 'auto' ? '自动' : '手动'}
+                            {annotationMode === 'auto' ? <Zap className="w-3 h-3" /> : annotationMode === 'llm' ? <Brain className="w-3 h-3" /> : <MousePointer2 className="w-3 h-3" />}
+                            {annotationMode === 'auto' ? '自动' : annotationMode === 'llm' ? 'AI' : '手动'}
                           </span>
                         </td>
                         <td className="px-4 py-3">

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { uploadVideo, batchUpload, healthCheck } from '../api.js';
-import { Play, Users, User, UploadCloud, Loader2, History, Sparkles, Zap, MousePointer2, X, FileVideo, Cpu, Monitor } from 'lucide-react';
+import { Play, Users, User, UploadCloud, Loader2, History, Sparkles, Zap, MousePointer2, X, FileVideo, Cpu, Monitor, Brain } from 'lucide-react';
 import UserMenu from '../components/UserMenu.jsx';
+import ModelManagementModal from '../components/ModelManagementModal.jsx';
 
 export default function Upload() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [gpuInfo, setGpuInfo] = useState({ cuda_available: false, mps_available: false, recommended_device: 'cpu' });
+  const [showModelModal, setShowModelModal] = useState(false);
 
   // Fetch GPU capability on mount
   useEffect(() => {
@@ -63,10 +65,12 @@ export default function Upload() {
         formData.append('device', device);
         const res = await uploadVideo(formData);
         if (res.success) {
-          if (annotationMode === 'auto') {
-            navigate(`/analysis/${res.data.id}`);
-          } else {
+          if (annotationMode === 'manual') {
             navigate(`/annotate/${res.data.id}`);
+          } else {
+            // Both 'auto' and 'llm' modes are fully automated:
+            // CV detection → LLM detection → save corners → trigger analysis
+            navigate(`/analysis/${res.data.id}`);
           }
         } else {
           alert(res.msg || '上传失败');
@@ -111,6 +115,13 @@ export default function Upload() {
           >
             <History className="w-4 h-4" />
             <span className="text-sm font-medium">历史记录</span>
+          </button>
+          <button
+            onClick={() => setShowModelModal(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#8b5cf6]/40 text-[#a78bfa] hover:bg-[#8b5cf6]/15 hover:border-[#8b5cf6]/60 transition-all cursor-pointer"
+          >
+            <Brain className="w-4 h-4" />
+            <span className="text-sm font-medium">模型管理</span>
           </button>
           <UserMenu />
         </div>
@@ -217,7 +228,7 @@ export default function Upload() {
           )}
 
           {/* Annotation mode selector */}
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-3 justify-center flex-wrap">
             <button
               onClick={() => setAnnotationMode('auto')}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 transition-all cursor-pointer ${
@@ -228,6 +239,17 @@ export default function Upload() {
             >
               <Zap className="w-4 h-4" />
               <span className="font-semibold text-sm">自动标注</span>
+            </button>
+            <button
+              onClick={() => setAnnotationMode('llm')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 transition-all cursor-pointer ${
+                annotationMode === 'llm'
+                  ? 'bg-[#8b5cf6]/20 border-[#8b5cf6] text-[#a78bfa] shadow-lg shadow-[#8b5cf6]/20'
+                  : 'bg-[#1e293b] border-[#334155] text-[#94a3b8] hover:border-[#475569]'
+              }`}
+            >
+              <Brain className="w-4 h-4" />
+              <span className="font-semibold text-sm">AI 标注</span>
             </button>
             <button
               onClick={() => setAnnotationMode('manual')}
@@ -322,7 +344,9 @@ export default function Upload() {
                 ? 'bg-[#334155] text-[#737785] cursor-not-allowed'
                 : annotationMode === 'auto'
                   ? 'bg-gradient-to-r from-[#22c55e] to-[#4ade80] text-white hover:from-[#4ade80] hover:to-[#86efac] shadow-lg shadow-[#22c55e]/30 cursor-pointer'
-                  : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white hover:from-[#8b5cf6] hover:to-[#a78bfa] shadow-lg shadow-[#6366f1]/30 cursor-pointer'
+                  : annotationMode === 'llm'
+                    ? 'bg-gradient-to-r from-[#8b5cf6] to-[#a78bfa] text-white hover:from-[#a78bfa] hover:to-[#c4b5fd] shadow-lg shadow-[#8b5cf6]/30 cursor-pointer'
+                    : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white hover:from-[#8b5cf6] hover:to-[#a78bfa] shadow-lg shadow-[#6366f1]/30 cursor-pointer'
             }`}
           >
             {uploading ? (
@@ -334,6 +358,11 @@ export default function Upload() {
               <>
                 <Zap className="w-5 h-5" />
                 {files.length > 1 ? '批量上传并自动分析' : '上传并自动分析'}
+              </>
+            ) : annotationMode === 'llm' ? (
+              <>
+                <Brain className="w-5 h-5" />
+                {files.length > 1 ? '批量上传并AI分析' : '上传并AI分析'}
               </>
             ) : (
               <>
@@ -349,6 +378,9 @@ export default function Upload() {
           </p>
         </div>
       </main>
+
+      {/* Model Management Modal */}
+      <ModelManagementModal open={showModelModal} onClose={() => setShowModelModal(false)} />
     </div>
   );
 }

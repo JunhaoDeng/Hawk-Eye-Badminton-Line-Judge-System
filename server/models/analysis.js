@@ -6,7 +6,7 @@ const schema = {
   videoPath: { type: String, required: true },
   mode: { type: String, required: true, enum: ['singles', 'doubles'] },
   status: { type: String, required: true, enum: ['pending', 'annotated', 'running', 'completed', 'failed', 'auto_detecting', 'auto_failed'], default: 'pending' },
-  annotationMode: { type: String, enum: ['manual', 'auto'], default: 'manual' },
+  annotationMode: { type: String, enum: ['manual', 'auto', 'llm'], default: 'manual' },
   autoConfidence: { type: Number, default: 0 },
   corners: { type: Array, default: [] },
   screenshotPath: { type: String, default: '' },

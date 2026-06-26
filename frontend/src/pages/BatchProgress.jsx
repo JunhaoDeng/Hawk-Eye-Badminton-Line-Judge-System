@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { batchStatus } from '../api.js';
-import { Sparkles, Loader2, CheckCircle2, XCircle, Zap, MousePointer2, Clock, Eye, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Sparkles, Loader2, CheckCircle2, XCircle, Zap, MousePointer2, Clock, Eye, AlertCircle, ArrowLeft, Brain } from 'lucide-react';
 import UserMenu from '../components/UserMenu.jsx';
 
 const STATUS_CONFIG = {
@@ -174,6 +174,12 @@ export default function BatchProgress() {
                         <span className="text-xs font-medium px-1.5 py-0.5 rounded-md bg-[#22c55e]/20 text-[#4ade80] flex items-center gap-1">
                           <Zap className="w-3 h-3" />
                           自动
+                        </span>
+                      )}
+                      {record.annotationMode === 'llm' && (
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded-md bg-[#8b5cf6]/20 text-[#a78bfa] flex items-center gap-1">
+                          <Brain className="w-3 h-3" />
+                          AI
                         </span>
                       )}
                       {record.annotationMode === 'manual' && (

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getTemplate, submitAnnotation, autoDetectPreview } from '../api.js';
-import { ArrowRight, RotateCcw, Check, Loader2, MapPin, Zap, AlertCircle } from 'lucide-react';
+import { getTemplate, submitAnnotation, autoDetectPreview, llmDetectPreview } from '../api.js';
+import { ArrowRight, RotateCcw, Check, Loader2, MapPin, Zap, AlertCircle, Brain, Cpu } from 'lucide-react';
 import UserMenu from '../components/UserMenu.jsx';
 
 const CORNER_LABELS = ['左上', '右上', '右下', '左下'];
@@ -30,6 +30,12 @@ export default function Annotate() {
   const [autoConfidence, setAutoConfidence] = useState(0);
   const [autoError, setAutoError] = useState('');
   const [showAutoPreview, setShowAutoPreview] = useState(false);
+
+  // LLM detect state
+  const [llmDetecting, setLlmDetecting] = useState(false);
+  const [llmCorners, setLlmCorners] = useState(null);
+  const [llmError, setLlmError] = useState('');
+  const [showLLMPreview, setShowLLMPreview] = useState(false);
 
   useEffect(() => {
     const img = new Image();
@@ -73,9 +79,17 @@ export default function Annotate() {
     // Draw image
     ctx.drawImage(image, offsetX, offsetY, imageWidth * scale, imageHeight * scale);
 
-    // Determine which corners to draw
-    const displayCorners = showAutoPreview && autoCorners ? autoCorners : corners;
-    const isAutoPreview = showAutoPreview && autoCorners;
+    // Determine which corners to draw (LLM preview takes highest priority, then auto preview, then manual)
+    let displayCorners = corners;
+    let isAutoPreview = false;
+    let isLLMPreview = false;
+    if (showLLMPreview && llmCorners) {
+      displayCorners = llmCorners;
+      isLLMPreview = true;
+    } else if (showAutoPreview && autoCorners) {
+      displayCorners = autoCorners;
+      isAutoPreview = true;
+    }
 
     // Draw corners
     displayCorners.forEach((corner, idx) => {
@@ -85,7 +99,7 @@ export default function Annotate() {
       // Circle
       ctx.beginPath();
       ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
-      ctx.fillStyle = isAutoPreview ? '#22c55e' : CORNER_COLORS[idx];
+      ctx.fillStyle = isLLMPreview ? '#f59e0b' : (isAutoPreview ? '#22c55e' : CORNER_COLORS[idx]);
       ctx.fill();
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
@@ -100,9 +114,10 @@ export default function Annotate() {
     // Draw connecting lines
     if (displayCorners.length >= 2) {
       ctx.beginPath();
-      ctx.strokeStyle = isAutoPreview ? '#22c55e' : '#22c55e';
+      const lineColor = isLLMPreview ? '#f59e0b' : (isAutoPreview ? '#22c55e' : '#22c55e');
+      ctx.strokeStyle = lineColor;
       ctx.lineWidth = 2;
-      if (isAutoPreview) {
+      if (isAutoPreview || isLLMPreview) {
         ctx.setLineDash([8, 4]);
       } else {
         ctx.setLineDash([]);
@@ -118,8 +133,8 @@ export default function Annotate() {
       ctx.setLineDash([]);
     }
 
-    // Draw guide text if not all corners set and not in auto preview
-    if (!showAutoPreview && corners.length < 4) {
+    // Draw guide text if not all corners set and not in preview mode
+    if (!showAutoPreview && !showLLMPreview && corners.length < 4) {
       const guideY = offsetY + 20;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(offsetX, guideY - 16, imageWidth * scale, 32);
@@ -144,10 +159,23 @@ export default function Annotate() {
         offsetX + 12, infoY + 4
       );
     }
-  }, [image, corners, scale, offsetX, offsetY, imageWidth, imageHeight, showAutoPreview, autoCorners, autoConfidence]);
+
+    // Draw LLM preview info
+    if (showLLMPreview && llmCorners) {
+      const infoY = offsetY + 20;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(offsetX, infoY - 16, imageWidth * scale, 32);
+      ctx.font = 'bold 13px Inter, sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillText(
+        'AI 大模型角点检测完成 · 点击"使用 AI 标注"确认',
+        offsetX + 12, infoY + 4
+      );
+    }
+  }, [image, corners, scale, offsetX, offsetY, imageWidth, imageHeight, showAutoPreview, autoCorners, autoConfidence, showLLMPreview, llmCorners]);
 
   const handleCanvasClick = (e) => {
-    if (showAutoPreview || corners.length >= 4) return;
+    if (showAutoPreview || showLLMPreview || corners.length >= 4) return;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -166,6 +194,9 @@ export default function Annotate() {
     setShowAutoPreview(false);
     setAutoCorners(null);
     setAutoError('');
+    setShowLLMPreview(false);
+    setLlmCorners(null);
+    setLlmError('');
   };
 
   const handleAutoDetect = async () => {
@@ -193,6 +224,33 @@ export default function Annotate() {
     if (autoCorners && autoCorners.length === 4) {
       setCorners(autoCorners);
       setShowAutoPreview(false);
+    }
+  };
+
+  const handleLLMDetect = async () => {
+    setLlmDetecting(true);
+    setLlmError('');
+    setShowLLMPreview(false);
+    try {
+      const res = await llmDetectPreview(id);
+      if (res.success && res.data && res.data.success && res.data.corners && res.data.corners.length === 4) {
+        setLlmCorners(res.data.corners);
+        setShowLLMPreview(true);
+      } else {
+        setLlmError(res.data?.error || 'AI 模型未检测到角点');
+      }
+    } catch (err) {
+      console.error('LLM detect error:', err);
+      setLlmError('AI 模型请求失败');
+    } finally {
+      setLlmDetecting(false);
+    }
+  };
+
+  const handleUseLLMAsBase = () => {
+    if (llmCorners && llmCorners.length === 4) {
+      setCorners(llmCorners);
+      setShowLLMPreview(false);
     }
   };
 
@@ -311,6 +369,59 @@ export default function Annotate() {
               )}
             </div>
 
+            {/* LLM AI detect button */}
+            <div className="bg-[#1e293b] rounded-xl border border-[#334155] p-4 space-y-3">
+              <h3 className="font-semibold text-[#e2e8f0] flex items-center gap-2">
+                <Brain className="w-4 h-4 text-[#f59e0b]" />
+                AI 大模型检测
+              </h3>
+
+              {showLLMPreview ? (
+                <>
+                  <div className="flex items-center gap-2 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg p-2.5">
+                    <Check className="w-4 h-4 text-[#f59e0b] shrink-0" />
+                    <span className="text-[#fbbf24] text-xs font-medium">
+                      AI 视觉模型检测完成
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleUseLLMAsBase}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] text-white font-medium transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#f59e0b]/30 cursor-pointer"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    使用 AI 标注
+                  </button>
+                  <p className="text-[#94a3b8] text-xs">
+                    点击后 AI 检测的角点将填入下方，可微调后点「确认并继续」提交
+                  </p>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleLLMDetect}
+                    disabled={llmDetecting || submitting}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] text-white font-medium transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#f59e0b]/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {llmDetecting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Cpu className="w-4 h-4" />
+                    )}
+                    {llmDetecting ? 'AI 正在分析...' : 'AI 大模型检测'}
+                  </button>
+                  <p className="text-[#94a3b8] text-xs">
+                    使用视觉大模型智能识别角点，参考标点示例图提高准确性
+                  </p>
+                </>
+              )}
+              {llmError && !showLLMPreview && (
+                <div className="flex items-start gap-2 bg-[#ef4444]/10 border border-[#ef4444]/30 rounded-lg p-2.5">
+                  <AlertCircle className="w-4 h-4 text-[#ef4444] shrink-0 mt-0.5" />
+                  <p className="text-[#ef4444] text-xs">{llmError}</p>
+                </div>
+              )}
+            </div>
+
             {/* Corner status */}
             <div className="bg-[#1e293b] rounded-xl border border-[#334155] p-4 space-y-3">
               <h3 className="font-semibold text-[#e2e8f0] flex items-center gap-2">
@@ -351,7 +462,7 @@ export default function Annotate() {
             <div className="space-y-2">
               <button
                 onClick={handleReset}
-                disabled={corners.length === 0 && !showAutoPreview || submitting}
+                disabled={corners.length === 0 && !showAutoPreview && !showLLMPreview || submitting}
                 className="w-full py-3 rounded-xl bg-[#334155] hover:bg-[#475569] text-[#e2e8f0] font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />

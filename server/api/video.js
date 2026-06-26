@@ -4,6 +4,7 @@ const fs = require('fs');
 const { spawn, spawnSync } = require('child_process');
 const { processPool } = require('../utils/processPool');
 const { getPythonPaths } = require('../utils/pythonResolver');
+const { detectCornersWithLLM, getDefaultModelConfig } = require('../services/llmCornerService');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 const videosDir = path.join(projectRoot, 'videos');
@@ -109,7 +110,7 @@ module.exports = function (router) {
         mode,
         annotationMode,
         device,
-        status: annotationMode === 'auto' ? 'auto_detecting' : 'pending',
+        status: (annotationMode === 'auto' || annotationMode === 'llm') ? 'auto_detecting' : 'pending',
         screenshotPath,
         screenshotWidth: extractData.width,
         screenshotHeight: extractData.height,
@@ -125,6 +126,22 @@ module.exports = function (router) {
             videoName: record.videoName,
             mode: record.mode,
             annotationMode: record.annotationMode,
+            device: record.device,
+            status: 'auto_detecting',
+            screenshotUrl: `/screenshots/${screenshotName}`,
+            screenshotWidth: extractData.width,
+            screenshotHeight: extractData.height
+          }
+        };
+      } else if (annotationMode === 'llm') {
+        triggerLLMAnnotation(record, projectRoot, AnalysisModel, pythonPath);
+        ctx.body = {
+          code: 200, success: true, msg: '上传成功，AI标注已启动',
+          data: {
+            id: record._id,
+            videoName: record.videoName,
+            mode: record.mode,
+            annotationMode: 'llm',
             device: record.device,
             status: 'auto_detecting',
             screenshotUrl: `/screenshots/${screenshotName}`,
@@ -177,6 +194,7 @@ module.exports = function (router) {
     const pythonPath = resolvePython();
     const AnalysisModel = ctx.model('analysis');
     const records = [];
+    const pendingAutoRecords = []; // Records that need auto/llm annotation after response
 
     for (const file of files) {
       const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
@@ -205,7 +223,7 @@ module.exports = function (router) {
         }
 
         const videoName = path.basename(originalName, path.extname(originalName));
-        const initialStatus = annotationMode === 'auto' ? 'auto_detecting' : 'pending';
+        const initialStatus = (annotationMode === 'auto' || annotationMode === 'llm') ? 'auto_detecting' : 'pending';
 
         const record = await AnalysisModel.createRow({
           userId: ctx.userId,
@@ -231,9 +249,9 @@ module.exports = function (router) {
           screenshotHeight: extractData.height
         });
 
-        // If auto mode, trigger auto-detection
-        if (annotationMode === 'auto') {
-          triggerAutoAnnotation(record, pythonPath, projectRoot, AnalysisModel);
+        // Collect records for deferred auto/llm annotation
+        if (annotationMode === 'auto' || annotationMode === 'llm') {
+          pendingAutoRecords.push(record);
         }
       } catch (e) {
         console.error('Batch upload error for file:', originalName, e);
@@ -245,10 +263,19 @@ module.exports = function (router) {
       }
     }
 
+    // Return response immediately so frontend can show progress
     ctx.body = {
       code: 200, success: true, msg: `批量上传完成，共 ${files.length} 个文件`,
       data: { records, total: files.length }
     };
+
+    // Fire all auto/llm annotations in PARALLEL after response
+    if (annotationMode === 'auto') {
+      pendingAutoRecords.forEach(r => triggerAutoAnnotation(r, pythonPath, projectRoot, AnalysisModel));
+    } else if (annotationMode === 'llm') {
+      // LLM can process multiple records in parallel — each calls an independent API
+      pendingAutoRecords.forEach(r => triggerLLMAnnotation(r, projectRoot, AnalysisModel, pythonPath));
+    }
   });
 
   // ========== Get screenshot (public - used by <img> tag, no auth header) ==========
@@ -416,6 +443,73 @@ module.exports = function (router) {
     }
   });
 
+  // ========== LLM-detect-preview: use vision model to detect corners (no status change) ==========
+  router.get('/api/v1/video/llm-detect-corners/:id', async (ctx) => {
+    const AnalysisModel = ctx.model('analysis');
+    const ModelConfigModel = ctx.model('modelConfig');
+    const record = await AnalysisModel.getRow({ _id: ctx.params.id, userId: ctx.userId });
+    if (!record) {
+      ctx.body = { code: 404, success: false, msg: '记录不存在' };
+      return;
+    }
+
+    const modelConfig = await getDefaultModelConfig(ModelConfigModel, ctx.userId);
+    if (!modelConfig) {
+      ctx.body = { code: 400, success: false, msg: '未配置 AI 模型，请先在模型管理中添加配置' };
+      return;
+    }
+
+    // Use template image for detection
+    const templatePath = findTemplatePath(projectRoot, record.mode);
+    const referenceImagePath = path.join(projectRoot, 'assets', 'label_court_example.png');
+
+    try {
+      // Step 1: run CV auto-detection first to get approximate corners as LLM hint
+      let cvHintCorners = null;
+      try {
+        const pythonPath = resolvePython();
+        const resultDir = path.join(projectRoot, 'results', record.videoName);
+        fs.mkdirSync(resultDir, { recursive: true });
+        const cvResult = await runCVDetection(projectRoot, templatePath, resultDir, pythonPath);
+        if (cvResult.success && cvResult.corners && cvResult.corners.length === 4) {
+          cvHintCorners = cvResult.corners;
+          console.log(`[LLMDetectPreview ${record._id}] CV hint (confidence ${cvResult.confidence}):`, JSON.stringify(cvHintCorners));
+        } else {
+          console.log(`[LLMDetectPreview ${record._id}] CV detection failed or no corners, LLM will detect from scratch:`, cvResult.error);
+        }
+      } catch (cvErr) {
+        console.log(`[LLMDetectPreview ${record._id}] CV detection error, proceeding without hint:`, cvErr.message);
+      }
+
+      // Step 2: call LLM with CV hint (if available)
+      const result = await detectCornersWithLLM(
+        modelConfig,
+        templatePath,
+        referenceImagePath,
+        cvHintCorners
+      );
+
+      ctx.body = {
+        code: 200,
+        success: true,
+        msg: result.success ? 'ok' : 'llm detection failed',
+        data: {
+          success: result.success,
+          corners: result.corners || null,
+          error: result.error || ''
+        }
+      };
+    } catch (e) {
+      console.error(`[LLMDetectPreview ${record._id}] Error:`, e.message);
+      ctx.body = {
+        code: 200,
+        success: true,
+        msg: 'llm detection preview failed',
+        data: { success: false, corners: null, error: e.message }
+      };
+    }
+  });
+
   // ========== Auto-annotate: detect court corners automatically ==========
   router.post('/api/v1/video/auto-annotate/:id', async (ctx) => {
     const AnalysisModel = ctx.model('analysis');
@@ -460,6 +554,52 @@ module.exports = function (router) {
 
     ctx.body = {
       code: 200, success: true, msg: '自动标注已启动',
+      data: { id: record._id, status: 'auto_detecting' }
+    };
+  });
+
+  // ========== LLM-annotate: use vision model to detect and auto-annotate ==========
+  router.post('/api/v1/video/llm-annotate/:id', async (ctx) => {
+    const AnalysisModel = ctx.model('analysis');
+    const ModelConfigModel = ctx.model('modelConfig');
+    const record = await AnalysisModel.getRow({ _id: ctx.params.id, userId: ctx.userId });
+    if (!record) {
+      ctx.body = { code: 404, success: false, msg: '记录不存在' };
+      return;
+    }
+
+    if (record.status === 'annotated' || record.status === 'running' || record.status === 'completed') {
+      ctx.body = {
+        code: 200, success: true, msg: 'AI标注已完成或分析已启动',
+        data: { id: record._id, status: record.status }
+      };
+      return;
+    }
+
+    if (record.status !== 'pending' && record.status !== 'auto_failed' && record.status !== 'auto_detecting') {
+      ctx.body = { code: 400, success: false, msg: '当前状态不允许AI标注，状态: ' + record.status };
+      return;
+    }
+
+    if (record.status === 'auto_detecting') {
+      ctx.body = {
+        code: 200, success: true, msg: 'AI标注已在运行中',
+        data: { id: record._id, status: 'auto_detecting' }
+      };
+      return;
+    }
+
+    await AnalysisModel.updateRow({ _id: record._id }, {
+      status: 'auto_detecting',
+      annotationMode: 'llm',
+      update_at: new Date()
+    });
+
+    const pythonPath = resolvePython();
+    triggerLLMAnnotation(await AnalysisModel.getRow({ _id: record._id }), projectRoot, AnalysisModel, pythonPath);
+
+    ctx.body = {
+      code: 200, success: true, msg: 'AI标注已启动',
       data: { id: record._id, status: 'auto_detecting' }
     };
   });
@@ -843,6 +983,29 @@ module.exports = function (router) {
 
 // ========== Helper functions ==========
 
+/**
+ * Run CV auto-detection (auto_detect_corners.py) on a template image.
+ * Shared by both the preview endpoint and the LLM annotation flow.
+ * @returns {Promise<{success, corners, confidence, strategy, error}>}
+ */
+async function runCVDetection(projectRoot, templatePath, resultDir, pythonPath) {
+  const detectScript = path.join(projectRoot, 'badminton_analysis', 'utils', 'auto_detect_corners.py');
+  const detectArgs = [
+    detectScript,
+    '--image-path', templatePath,
+    '--output-dir', resultDir
+  ];
+  const stdout = await runPythonScript(pythonPath, detectArgs, 15000);
+  const detectData = JSON.parse(stdout);
+  return {
+    success: detectData.success,
+    corners: detectData.corners || null,
+    confidence: detectData.confidence || 0,
+    strategy: detectData.strategy || 'none',
+    error: detectData.error || ''
+  };
+}
+
 function runPythonScript(pythonPath, args, timeout = 30000) {
   return new Promise((resolve, reject) => {
     const child = spawn(pythonPath, args, {
@@ -951,6 +1114,105 @@ function triggerAutoAnnotation(record, pythonPath, projectRoot, AnalysisModel) {
         update_at: new Date()
       });
     });
+}
+
+/**
+ * Trigger LLM-based auto annotation for a record (fire-and-forget, non-blocking).
+ * Strategy: run CV auto-detection first to get approximate corners, then pass
+ * them as a hint to the LLM vision model for refinement. This is the SAME logic
+ * used by the Annotate page's "AI 大模型检测" button, ensuring consistency.
+ * On failure, marks as auto_failed (same as CV algorithm failure behavior).
+ */
+function triggerLLMAnnotation(record, projectRoot, AnalysisModel, pythonPath) {
+  const resultDir = path.join(projectRoot, 'results', record.videoName);
+  fs.mkdirSync(resultDir, { recursive: true });
+
+  // Helper to mark record as auto_failed
+  const markFailed = async (errorMsg) => {
+    console.error(`[LLMAnnotate ${record._id}] ${errorMsg}`);
+    await AnalysisModel.updateRow({ _id: record._id }, {
+      status: 'auto_failed',
+      errorMessage: errorMsg,
+      update_at: new Date()
+    });
+  };
+
+  // Fire-and-forget: use .then().catch() like triggerAutoAnnotation
+  (async () => {
+    // Get model config for this user — use the Mongoose plugin's model resolver
+    let modelConfig;
+    try {
+      const mongoosePlugin = require('../plugins/mongoose');
+      const ModelConfigModel = mongoosePlugin.model(null, 'modelConfig');
+      modelConfig = await getDefaultModelConfig(ModelConfigModel, record.userId);
+    } catch (modelErr) {
+      await markFailed('AI标注失败: 模型加载异常 - ' + modelErr.message);
+      return;
+    }
+
+    if (!modelConfig) {
+      await markFailed('AI标注失败: 未配置视觉模型，请先添加模型配置');
+      return;
+    }
+
+    const templatePath = findTemplatePath(projectRoot, record.mode);
+    const referenceImagePath = path.join(projectRoot, 'assets', 'label_court_example.png');
+
+    try {
+      // Step 1: run CV auto-detection first to get approximate corners as LLM hint
+      let cvHintCorners = null;
+      try {
+        const cvResult = await runCVDetection(projectRoot, templatePath, resultDir, pythonPath);
+        if (cvResult.success && cvResult.corners && cvResult.corners.length === 4) {
+          cvHintCorners = cvResult.corners;
+          console.log(`[LLMAnnotate ${record._id}] CV hint (confidence ${cvResult.confidence}):`, JSON.stringify(cvHintCorners));
+        } else {
+          console.log(`[LLMAnnotate ${record._id}] CV detection failed or no corners, LLM will detect from scratch:`, cvResult.error);
+        }
+      } catch (cvErr) {
+        console.log(`[LLMAnnotate ${record._id}] CV detection error, proceeding without hint:`, cvErr.message);
+      }
+
+      // Step 2: call LLM with CV hint (if available)
+      const result = await detectCornersWithLLM(
+        modelConfig,
+        templatePath,
+        referenceImagePath,
+        cvHintCorners
+      );
+
+      if (!result.success) {
+        console.error(`[LLMAnnotate ${record._id}] Detection failed:`, result.error);
+        await AnalysisModel.updateRow({ _id: record._id }, {
+          status: 'auto_failed',
+          errorMessage: 'AI标注失败: ' + result.error,
+          update_at: new Date()
+        });
+        return;
+      }
+
+      console.log(`[LLMAnnotate ${record._id}] Success, corners detected by LLM`);
+
+      // Save LLM-detected corners and trigger analysis
+      await AnalysisModel.updateRow({ _id: record._id }, {
+        status: 'annotated',
+        annotationMode: 'llm',
+        corners: result.corners,
+        resultDir,
+        update_at: new Date()
+      });
+
+      const updatedRecord = await AnalysisModel.getRow({ _id: record._id });
+      triggerAnalysis(updatedRecord, pythonPath, projectRoot, AnalysisModel);
+    } catch (e) {
+      console.error(`[LLMAnnotate ${record._id}] Error:`, e.message);
+      await AnalysisModel.updateRow({ _id: record._id }, {
+        status: 'auto_failed',
+        errorMessage: 'AI标注异常: ' + e.message,
+        update_at: new Date()
+      });
+    }
+  })();
 }
 
 /**

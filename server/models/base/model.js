@@ -57,6 +57,15 @@ function model(schema, tableName) {
     }
   };
 
+  Schema.statics.updateRows = async function (condition, params) {
+    try {
+      return await this.updateMany(condition, params);
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  };
+
   Schema.statics.findOneAndUpdateRow = async function (condition, params) {
     try {
       return await this.findOneAndUpdate(condition, params, { new: true });

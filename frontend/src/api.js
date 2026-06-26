@@ -64,6 +64,26 @@ export const autoDetectPreview = (id) =>
 export const autoAnnotate = (id) =>
   api.post(`/api/v1/video/auto-annotate/${id}`);
 
+export const llmDetectPreview = (id) =>
+  api.get(`/api/v1/video/llm-detect-corners/${id}`);
+
+export const llmAnnotate = (id) =>
+  api.post(`/api/v1/video/llm-annotate/${id}`);
+
+// ========== Model Config ==========
+
+export const getModels = () =>
+  api.get('/api/v1/models');
+
+export const saveModelConfig = (data) =>
+  api.post('/api/v1/models', data);
+
+export const deleteModelConfig = (id) =>
+  api.delete(`/api/v1/models/${id}`);
+
+export const setDefaultModel = (id) =>
+  api.put(`/api/v1/models/${id}/set-default`);
+
 export const startAnalysis = (id) =>
   api.post(`/api/v1/video/analyze/${id}`);
 
