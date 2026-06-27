@@ -2,9 +2,9 @@
 
 <div align="center">
 
-[![GitHub stars](https://img.shields.io/github/stars/yo-WASSUP/Good-Badminton?style=social)](https://github.com/yo-WASSUP/Good-Badminton/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yo-WASSUP/Good-Badminton?style=social)](https://github.com/yo-WASSUP/Good-Badminton/network/members)
-[![GitHub license](https://img.shields.io/github/license/yo-WASSUP/Good-Badminton)](https://github.com/yo-WASSUP/Good-Badminton/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System?style=social)](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System?style=social)](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/network/members)
+[![GitHub license](https://img.shields.io/github/license/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System)](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/blob/main/LICENSE)
 
 **A computer-vision toolkit for badminton match video analysis**
 
@@ -146,7 +146,7 @@ pip install --force-reinstall -r requirements.txt
 Shuttlecock detection uses the YOLO weight released by this project. Download `yolo11s-ball.pt` from GitHub Releases:
 
 ```text
-https://github.com/yo-WASSUP/Good-Badminton/releases
+https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/releases
 ```
 
 Place it at:

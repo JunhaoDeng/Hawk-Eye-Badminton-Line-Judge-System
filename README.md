@@ -2,9 +2,9 @@
 
 <div align="center">
 
-[![GitHub stars](https://img.shields.io/github/stars/yo-WASSUP/Good-Badminton?style=social)](https://github.com/yo-WASSUP/Good-Badminton/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yo-WASSUP/Good-Badminton?style=social)](https://github.com/yo-WASSUP/Good-Badminton/network/members)
-[![GitHub license](https://img.shields.io/github/license/yo-WASSUP/Good-Badminton)](https://github.com/yo-WASSUP/Good-Badminton/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System?style=social)](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System?style=social)](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/network/members)
+[![GitHub license](https://img.shields.io/github/license/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System)](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/blob/main/LICENSE)
 
 **基于计算机视觉的羽毛球比赛视频分析工具 — 支持 CLI 命令行 + Web 管理界面**
 
@@ -380,7 +380,7 @@ results/<视频名>/
 
 ## 📦 模型准备
 
-羽毛球检测模型 `yolo11s-ball.pt` 需从 [GitHub Release](https://github.com/yo-WASSUP/Good-Badminton/releases) 下载并放入 `weights/` 目录。
+羽毛球检测模型 `yolo11s-ball.pt` 需从 [GitHub Release](https://github.com/JunhaoDeng/Hawk-Eye-Badminton-Line-Judge-System/releases) 下载并放入 `weights/` 目录。
 
 姿态模型可放入本地文件（`rtmlib` 会自动检测并使用）：
 
