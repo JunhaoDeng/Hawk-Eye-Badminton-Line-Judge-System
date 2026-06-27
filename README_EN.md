@@ -14,9 +14,9 @@
 
 ## 🎬 Preview
 
-![Good-Badminton analysis preview](assets/demo.gif)
-
-Video preview: `assets/demo.mp4`.
+<!-- ![Good-Badminton analysis preview](assets/demo.gif) -->
+![Good-Badminton 羽毛球AI分析系统](assets/羽毛球AI分析系统.gif)
+<!-- Video preview: `assets/demo.mp4`. -->
 
 ## 🆕 Changelog
 

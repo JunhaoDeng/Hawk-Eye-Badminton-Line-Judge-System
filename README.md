@@ -14,9 +14,10 @@
 
 ## 🎬 效果预览
 
-![Good-Badminton 分析结果预览](assets/demo.gif)
+<!-- ![Good-Badminton 分析结果预览](assets/demo.gif) -->
+![Good-Badminton 羽毛球AI分析系统](assets/羽毛球AI分析系统.gif)
 
-视频预览文件在 `assets/demo.mp4`。
+<!-- 视频预览文件在 `assets/demo.mp4`。 -->
 
 ---
 
