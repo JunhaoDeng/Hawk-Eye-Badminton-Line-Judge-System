@@ -1,4 +1,4 @@
-﻿# Good-Badminton: AI 羽毛球鹰眼系统 🏸
+﻿# AI 羽毛球鹰眼系统 🏸
 
 <div align="center">
 

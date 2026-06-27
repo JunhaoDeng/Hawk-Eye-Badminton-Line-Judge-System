@@ -1,4 +1,4 @@
-﻿# Good-Badminton: AI Badminton Hawk-Eye System 🏸
+﻿# AI Badminton Hawk-Eye System 🏸
 
 <div align="center">
 
