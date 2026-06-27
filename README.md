@@ -22,6 +22,7 @@
 
 ## 🆕 更新日志
 
+- **2026-06-27**：新增 **AI 大模型球场标注** 功能 — 支持接入 OpenAI 兼容的视觉大模型（如 GPT-4o、Qwen-VL、DeepSeek 等）自动识别球场角点；提供模型管理面板，可配置多个 API 密钥和模型，一键切换；支持推理模型（reasoning model）；LLM 检测失败时自动回退到 CV 检测结果；LLM 视觉模型与 CV 算法协同标注，覆盖更多复杂球场场景。
 - **2026-06-24**：新增 NVIDIA CUDA GPU 推理加速支持（YOLO + ONNX Runtime 全面 GPU 加速）；前端设备选择器新增 CUDA 按钮，与 MPS 互斥；新增 `requirements-cuda.txt` 和 GPU 检测脚本。修复可视化 Y 轴方向（上半场/下半场球员不再标反）；优化 Web 端标注流程（默认手动标注，自动检测仅预览）；修复快速标注坐标缩放问题；修复 Windows MSMF 后端输出 FMP4 编码导致浏览器无法播放视频的问题（引入 `imageio-ffmpeg` 自动转码为 H.264，系统 FFmpeg 缺失时仍可正常输出浏览器兼容视频）。
 - **2026-06-23**：新增 Web 管理界面（React + Koa + MongoDB），支持用户注册/登录、视频上传、批量分析、历史记录管理、分析结果在线预览与下载。新增 MPS（Apple Silicon GPU）推理加速选项。
 - **2026-06-20**：正式开源。
@@ -42,6 +43,14 @@
 - **位置可视化** — 自动生成每场比赛和各回合的球员位置热力图与散点图
 - **GPU 加速** — 支持 NVIDIA CUDA 和 Apple Silicon MPS（Metal Performance Shaders），前端可一键切换
 
+### AI 大模型球场标注 🆕
+
+- **视觉大模型角点检测** — 接入 OpenAI 兼容的视觉大模型（GPT-4o、Qwen-VL、DeepSeek 等）自动识别球场四角，精度远超纯 CV 算法
+- **模型管理面板** — Web 端可视化配置多个 API 密钥和模型，一键切换当前使用的模型
+- **推理模型支持** — 兼容 reasoning model（如 DeepSeek-R1），自动从推理轨迹中提取角点坐标
+- **两阶段协同标注** — CV 算法先进行粗略检测作为提示，视觉大模型在提示基础上精修到像素级精度
+- **智能回退** — LLM 重试 3 次仍失败时，自动回退到 CV 检测结果，保证标注流程不中断
+
 ### Web 管理平台
 
 - **用户系统** — 邮箱注册/登录，JWT 认证
@@ -50,6 +59,7 @@
 - **分析管理** — 一键启动分析，实时查看进度，支持最多 2 个并发任务
 - **结果浏览** — 在线播放带标注视频，查看热力图/散点图，下载分析结果
 - **历史记录** — 分页查看所有分析记录，按状态筛选，支持删除
+- **模型管理** — 配置 OpenAI 兼容的视觉大模型 API，用于 AI 球场角点自动检测，支持多模型切换
 
 ### 可视化叠加层（全部可独立开关）
 
@@ -209,14 +219,14 @@ curl http://localhost:9000/api/v1/health
 ## 🧭 Web 平台工作流程
 
 ```
-注册/登录 → 上传视频 → 标注球场（手动点击 / 自动检测+微调）→ 启动分析 → 查看结果 → 下载
+注册/登录 → 上传视频 → 标注球场（手动 / CV自动 / AI大模型自动）→ 启动分析 → 查看结果 → 下载
 ```
 
 | 步骤 | 页面 | 说明 |
 |------|------|------|
 | 注册/登录 | `/login` | 邮箱 + 密码注册，JWT 30 天有效 |
 | 上传视频 | `/upload` | 支持拖拽上传、选择单打/双打模式、CPU/MPS NVIDIA GPU 切换 |
-| 球场标注 | `/annotate/:id` | 默认手动标注四角点；可点击"自动检测角点"生成预览，确认后微调再提交 |
+| 球场标注 | `/annotate/:id` | 三种方式：①手动点击四角点标注 ②CV 自动检测（背景建模+线检测）生成预览后微调 ③AI 大模型视觉检测（需先配置模型），精度最高 |
 | 启动分析 | `/analysis/:id` | 一键触发分析，实时轮询进度，完成后可跳转结果页 |
 | 查看结果 | `/results/:id` | 在线播放标注视频，浏览热力图/散点图，下载 JSONL 数据 |
 | 历史记录 | `/history` | 分页查看所有分析任务，按状态筛选，支持删除 |
@@ -429,15 +439,20 @@ Good-Badminton/
 │   ├── api/
 │   │   ├── auth.js                  # 注册/登录（bcrypt + JWT）
 │   │   ├── health.js                # 健康检查
-│   │   └── video.js                 # 核心 API（上传、标注、分析、结果、下载）
+│   │   ├── video.js                 # 核心 API（上传、标注、分析、结果、下载）
+│   │   └── modelConfig.js           # AI 模型配置 CRUD API
 │   ├── models/                      # Mongoose 数据模型
 │   │   ├── base/model.js            # 基础模型类
 │   │   ├── user.js                  # 用户模型
-│   │   └── analysis.js              # 分析任务模型
+│   │   ├── analysis.js              # 分析任务模型
+│   │   └── modelConfig.js           # AI 大模型配置模型
 │   ├── plugins/
 │   │   └── mongoose.js              # MongoDB 连接插件（自动加载 models）
+│   ├── services/
+│   │   └── llmCornerService.js      # AI 大模型球场角点检测服务
 │   └── utils/
-│       └── processPool.js           # 并发控制（最多 2 个分析任务同时运行）
+│       ├── processPool.js           # 并发控制（最多 2 个分析任务同时运行）
+│       └── pythonResolver.js        # 跨平台 Python 路径解析
 ├── frontend/                        # React 前端 (Vite + TailwindCSS)
 │   ├── vite.config.js               # Vite 配置（代理到后端 9000）
 │   ├── package.json
@@ -446,7 +461,8 @@ Good-Badminton/
 │       ├── App.jsx                  # 路由配置
 │       ├── api.js                   # API 客户端（axios）
 │       ├── components/
-│       │   └── UserMenu.jsx         # 用户菜单组件
+│       │   ├── UserMenu.jsx         # 用户菜单组件
+│       │   └── ModelManagementModal.jsx  # AI 模型管理面板
 │       └── pages/
 │           ├── Login.jsx            # 登录页
 │           ├── Upload.jsx           # 上传页（模式选择、设备切换、拖拽上传）
@@ -484,6 +500,11 @@ Good-Badminton/
 | DELETE | `/api/v1/video/:id` | 删除分析记录 | ✓ |
 | GET | `/api/v1/video/screenshot/:id` | 获取视频截图 | ✗ |
 | GET | `/api/v1/video/template/:id` | 获取球场模板图 | ✗ |
+| POST | `/api/v1/video/llm-annotate/:id` | 触发 AI 大模型球场标注 | ✓ |
+| GET | `/api/v1/models` | 获取已配置的 AI 模型列表 | ✓ |
+| POST | `/api/v1/models` | 添加新的 AI 模型配置 | ✓ |
+| PUT | `/api/v1/models/:id/set-default` | 切换当前使用的 AI 模型 | ✓ |
+| DELETE | `/api/v1/models/:id` | 删除 AI 模型配置 | ✓ |
 
 ---
 
@@ -510,6 +531,13 @@ Good-Badminton/
 
 ### 并发控制
 后端通过 `processPool.js` 限制最多 2 个 Python 分析进程同时运行，通过 Node.js `child_process.spawn` 调用 `main.py`，传入 `--device`、`--mode` 等参数。
+
+### AI 大模型球场标注 🆕
+- 支持 OpenAI 兼容的视觉大模型 API（GPT-4o、Qwen-VL、DeepSeek-VL 等）
+- 两阶段策略：CV 算法（背景建模 + 边缘检测）先提供粗略角点提示，视觉大模型在此基础上精修到像素级精度
+- 自动重试机制：最多 3 次调用，支持 reasoning model 的推理轨迹提取
+- 智能回退：LLM 多次重试失败后，自动回退到 CV 检测结果，标注流程不中断
+- 模型管理存储于 MongoDB，API Key 加密存储，每个用户最多支持配置多个模型
 
 ---
 

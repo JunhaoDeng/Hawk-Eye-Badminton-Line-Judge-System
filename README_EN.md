@@ -20,6 +20,7 @@ Video preview: `assets/demo.mp4`.
 
 ## 🆕 Changelog
 
+- **2026-06-27**: Added **AI Vision Model Court Detection** — supports OpenAI-compatible vision LLMs (GPT-4o, Qwen-VL, DeepSeek, etc.) for automatic court corner detection; includes model management panel to configure multiple API keys/models with one-click switching; supports reasoning models; auto-fallback to CV results on LLM failure; LLM + CV collaborative annotation covering more complex court scenarios.
 - **2026-06-24**: Added NVIDIA CUDA GPU acceleration (full YOLO + ONNX Runtime GPU); frontend device selector now includes CUDA (mutually exclusive with MPS); added `requirements-cuda.txt` and GPU detection scripts. Fixed visualization Y-axis direction (upper/lower court player swap). Optimized Web annotation flow (default manual, auto-detect as preview only). Fixed Windows MSMF backend producing FMP4-encoded videos unplayable in browsers (introduced `imageio-ffmpeg` to auto-transcode to H.264; browser-compatible output even without system FFmpeg).
 - **2026-06-23**: Added Web management platform (React + Koa + MongoDB) with user auth, video upload, batch analysis, history, and online result preview/download. Added MPS (Apple Silicon GPU) acceleration option.
 - **2026-06-20**: Initial open-source release.
@@ -57,6 +58,14 @@ Video preview: `assets/demo.mp4`.
 - **Local execution** - Videos, models, and analysis results stay on your local machine.
 - **Web management platform** - React + Koa + MongoDB stack with user auth, video upload, court annotation, analysis management, and online result preview.
 - **GPU acceleration** - Supports NVIDIA CUDA and Apple Silicon MPS (Metal Performance Shaders), with one-click switching on the frontend.
+
+### AI Vision Model Court Detection 🆕
+
+- **Vision LLM corner detection** - Use OpenAI-compatible vision models (GPT-4o, Qwen-VL, DeepSeek-VL, etc.) to automatically detect court corners with higher accuracy than pure CV algorithms
+- **Model management panel** - Visually configure multiple API keys and models in the Web UI, switch between them with one click
+- **Reasoning model support** - Compatible with reasoning models (e.g. DeepSeek-R1), automatically extracts corner coordinates from reasoning traces
+- **Two-stage collaborative annotation** - CV algorithm provides rough corner hints, then the vision LLM refines them to pixel-level precision
+- **Smart fallback** - After 3 LLM retry failures, automatically falls back to CV detection results, ensuring uninterrupted annotation workflow
 
 ## 📋 Requirements
 
@@ -379,7 +388,7 @@ Default output directory: `results/<video_name>/`.
 ## 🧩 Project Structure
 
 ```text
-main.py              # CLI entry and argument parsing; keeps python main.py ... usage
+main.py              # CLI entry and argument parsing
 badminton_analysis/
 ├── system.py        # Main video analysis pipeline: BadmintonAnalysisSystem
 ├── court/           # Court annotation and coordinate mapping
@@ -388,7 +397,65 @@ badminton_analysis/
 ├── media/           # Video/audio processing
 ├── tracking/        # Player tracking
 └── visualization/   # Video overlays, statistics charts, and position plots
+server/              # Node.js backend (Koa + MongoDB)
+├── api/
+│   ├── auth.js      # User registration/login (bcrypt + JWT)
+│   ├── health.js    # Health check endpoint
+│   ├── video.js     # Core API (upload, annotate, analyze, results, download)
+│   └── modelConfig.js   # AI model configuration CRUD API
+├── models/
+│   ├── user.js      # User model
+│   ├── analysis.js  # Analysis task model
+│   └── modelConfig.js   # AI model configuration model
+├── services/
+│   └── llmCornerService.js  # AI vision model court detection service
+└── utils/
+    ├── processPool.js       # Concurrency control (max 2 analysis tasks)
+    └── pythonResolver.js    # Cross-platform Python path resolver
+frontend/            # React frontend (Vite + TailwindCSS)
+└── src/
+    ├── components/
+    │   ├── UserMenu.jsx
+    │   └── ModelManagementModal.jsx  # AI model management panel
+    └── pages/
+        ├── Login.jsx, Upload.jsx, Annotate.jsx
+        ├── Analysis.jsx, Results.jsx, History.jsx
+        └── BatchProgress.jsx
 ```
+
+## 📊 API Routes
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|:---:|
+| POST | `/api/v1/auth/register` | User registration | ✗ |
+| POST | `/api/v1/auth/login` | User login | ✗ |
+| GET | `/api/v1/health` | Health check | ✗ |
+| POST | `/api/v1/video/upload` | Upload single video | ✓ |
+| POST | `/api/v1/video/batch-upload` | Batch upload videos | ✓ |
+| GET | `/api/v1/video/list` | Get analysis list | ✓ |
+| GET | `/api/v1/video/status/:id` | Get analysis status | ✓ |
+| POST | `/api/v1/video/annotate/:id` | Save court annotation | ✓ |
+| POST | `/api/v1/video/auto-annotate/:id` | Trigger CV auto-annotation | ✓ |
+| POST | `/api/v1/video/auto-detect-preview/:id` | Preview CV auto-detection | ✓ |
+| POST | `/api/v1/video/llm-annotate/:id` | Trigger AI vision model annotation | ✓ |
+| POST | `/api/v1/video/analyze/:id` | Start analysis | ✓ |
+| GET | `/api/v1/video/results/:id` | Get analysis results | ✓ |
+| GET | `/api/v1/video/download/:type/:id` | Download result files | ✓ |
+| DELETE | `/api/v1/video/:id` | Delete analysis record | ✓ |
+| GET | `/api/v1/models` | List AI model configs | ✓ |
+| POST | `/api/v1/models` | Add AI model config | ✓ |
+| PUT | `/api/v1/models/:id/set-default` | Switch active AI model | ✓ |
+| DELETE | `/api/v1/models/:id` | Delete AI model config | ✓ |
+
+## 🧠 Technical Highlights
+
+### AI Vision Model Court Detection 🆕
+
+- Supports OpenAI-compatible vision LLM APIs (GPT-4o, Qwen-VL, DeepSeek-VL, etc.)
+- Two-stage strategy: CV (background subtraction + edge detection) provides rough corner hints, then the vision LLM refines to pixel-level precision
+- Retry mechanism: up to 3 LLM calls with automatic reasoning trace extraction for reasoning models
+- Smart fallback: if all LLM attempts fail, gracefully falls back to CV detection results
+- Model configurations stored in MongoDB with encrypted API keys, supporting multiple models per user
 
 ## 🙏 Acknowledgements
 
