@@ -1,6 +1,5 @@
 function model(schema, tableName) {
   let Schema = new require('mongoose').Schema(schema, { collection: tableName });
-//skadjlkjaf
   Schema.statics.getRowsCount = async function (params) {
     try {
       return await this.countDocuments(params);
